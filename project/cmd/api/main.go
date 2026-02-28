@@ -1,68 +1,81 @@
 package main
 
 import (
-	"database/sql"
-	"fmt"
+	"context"
 	"log"
 	"net/http"
-	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
+	httpapi "diplom.com/m/internal/adapters/httpapi"
+	"diplom.com/m/internal/adapters/nats"
+	"diplom.com/m/internal/adapters/pganalysis"
+	"diplom.com/m/internal/adapters/pgcore"
+	"diplom.com/m/internal/adapters/s3"
+	"diplom.com/m/internal/auth"
+	"diplom.com/m/internal/config"
+	"diplom.com/m/internal/usecase"
 )
 
 func main() {
-	addr := getenv("HTTP_ADDR", ":8080")
+	cfg := config.Load()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		// Lightweight checks (DB ping). For NATS/S3 you can add later.
-		db, err := openDB()
-		if err != nil {
-			http.Error(w, "db open failed: "+err.Error(), http.StatusServiceUnavailable)
-			return
-		}
-		defer db.Close()
-
-		ctxTimeout := 2 * time.Second
-		if err := pingDB(db, ctxTimeout); err != nil {
-			http.Error(w, "db ping failed: "+err.Error(), http.StatusServiceUnavailable)
-			return
-		}
-
-		fmt.Fprintln(w, "ok")
-	})
-
-	log.Println("listening on", addr)
-	log.Fatal(http.ListenAndServe(addr, nil))
-}
-
-func openDB() (*sql.DB, error) {
-	host := getenv("DB_HOST", "db")
-	port := getenv("DB_PORT", "5432")
-	name := getenv("DB_NAME", "app")
-	user := getenv("DB_USER", "app")
-	pass := getenv("DB_PASSWORD", "app")
-	ssl := getenv("DB_SSLMODE", "disable")
-
-	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", user, pass, host, port, name, ssl)
-	return sql.Open("pgx", dsn)
-}
-
-func pingDB(db *sql.DB, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if err := db.Ping(); err == nil {
-			return nil
-		}
-		time.Sleep(200 * time.Millisecond)
+	coreStore, err := pgcore.NewStore(ctx, cfg.CoreDBDSN)
+	if err != nil {
+		log.Fatal(err)
 	}
-	return fmt.Errorf("timeout after %s", timeout)
-}
+	defer coreStore.Close()
 
-func getenv(k, def string) string {
-	v := os.Getenv(k)
-	if v == "" {
-		return def
+	analysisRepo, err := pganalysis.New(ctx, cfg.AnalysisDBDSN)
+	if err != nil {
+		log.Fatal(err)
 	}
-	return v
+	defer analysisRepo.Close()
+
+	docRepo := pgcore.NewDocumentRepo(coreStore)
+	jobRepo := pgcore.NewJobRepo(coreStore)
+	userRepo := pgcore.NewUserRepo(coreStore)
+	sessionRepo := pgcore.NewSessionRepo(coreStore)
+	broker := nats.NewInMemoryBroker()
+	objStore := s3.NewLocalStore(cfg.StorageRootDir, cfg.StorageDownloadRoute)
+
+	docsSvc := &usecase.DocumentService{Docs: docRepo, Jobs: jobRepo, Store: objStore, Broker: broker}
+	authSvc := &usecase.AuthService{
+		Users:      userRepo,
+		Sessions:   sessionRepo,
+		Tokens:     auth.TokenManager{Secret: []byte(cfg.JWTSecret), Issuer: cfg.JWTIssuer},
+		AccessTTL:  cfg.AccessTokenTTL,
+		RefreshTTL: cfg.RefreshTokenTTL,
+	}
+
+	api := &httpapi.API{
+		Auth:     authSvc,
+		Docs:     docsSvc,
+		DocRepo:  docRepo,
+		JobRepo:  jobRepo,
+		Analysis: analysisRepo,
+		Store:    objStore,
+		SSE:      &httpapi.SSEHandler{Broker: broker},
+	}
+
+	srv := &http.Server{
+		Addr:              cfg.HTTPAddr,
+		Handler:           api.Routes(),
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shutdownCtx)
+	}()
+
+	log.Printf("api listening on %s", cfg.HTTPAddr)
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Fatal(err)
+	}
 }

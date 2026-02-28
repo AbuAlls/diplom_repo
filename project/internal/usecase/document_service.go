@@ -4,12 +4,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"io"
+	"path/filepath"
+	"strings"
 	"time"
 
-	"diplom.com/m/internal/ports"
-
 	"diplom.com/m/internal/domain"
+	"diplom.com/m/internal/ports"
 )
 
 type DocumentService struct {
@@ -20,48 +22,48 @@ type DocumentService struct {
 }
 
 func (s *DocumentService) Upload(ctx context.Context, ownerID, filename, mime string, r io.Reader, size int64) (docID, jobID string, err error) {
-	// 1) checksum (streaming)
+	safeName := sanitizeFilename(filename)
 	h := sha256.New()
 	tee := io.TeeReader(r, h)
+	key := fmt.Sprintf("%s/%s_%s", ownerID, time.Now().UTC().Format("20060102T150405Z"), safeName)
 
-	// 2) object key
-	tmpKey := ownerID + "/" + time.Now().UTC().Format("20060102T150405Z") + "_" + filename
-
-	// 3) upload to object store
-	if err := s.Store.Put(ctx, tmpKey, tee, size, mime); err != nil {
+	if err := s.Store.Put(ctx, key, tee, size, mime); err != nil {
 		return "", "", err
 	}
 	checksum := hex.EncodeToString(h.Sum(nil))
 
-	// 4) create document row
-	docID, err = s.Docs.Create(ctx, ownerID, filename, mime, checksum, tmpKey, size)
+	docID, err = s.Docs.Create(ctx, ownerID, safeName, mime, checksum, key, size)
 	if err != nil {
 		return "", "", err
 	}
-
-	// 5) create job
 	jobID, err = s.Jobs.Create(ctx, ownerID, docID, 1)
 	if err != nil {
 		return "", "", err
 	}
 
-	// 6) publish job.created
 	evt := domain.Event{
-		EventID:    newUUID(),
+		EventID:    domain.NewEventID(),
 		OccurredAt: time.Now().UTC(),
+		Type:       "jobs.created",
 		UserID:     ownerID,
 		DocumentID: docID,
 		JobID:      jobID,
-		Type:       "jobs.created",
 		Data: map[string]any{
 			"pipeline_version": 1,
 		},
 	}
-	_ = s.Broker.Publish(ctx, "jobs.created", evt)
+	if err := s.Broker.Publish(ctx, "jobs.created", evt); err != nil {
+		return "", "", err
+	}
 	_ = s.Broker.PublishUI(ctx, "ui.jobs."+jobID, evt)
-
 	return docID, jobID, nil
 }
 
-// замените на нормальный uuid generator
-func newUUID() string { return time.Now().UTC().Format("20060102150405.000000000") }
+func sanitizeFilename(name string) string {
+	name = filepath.Base(name)
+	name = strings.ReplaceAll(name, "..", "")
+	if name == "." || name == "" || name == "/" {
+		return "file.bin"
+	}
+	return name
+}

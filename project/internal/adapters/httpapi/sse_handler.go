@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
+	"diplom.com/m/internal/domain"
 	"diplom.com/m/internal/ports"
 )
 
@@ -15,7 +17,13 @@ type SSEHandler struct {
 }
 
 func (h *SSEHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	jobID := r.PathValue("jobID") // Go 1.22+ ServeMux patterns; иначе mux/chi
+	jobID := strings.TrimPrefix(r.URL.Path, "/jobs/")
+	jobID = strings.TrimSuffix(jobID, "/events")
+	jobID = strings.Trim(jobID, "/")
+	if jobID == "" {
+		http.Error(w, "job id is required", http.StatusBadRequest)
+		return
+	}
 	subject := "ui.jobs." + jobID
 
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -31,17 +39,16 @@ func (h *SSEHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
-	// Heartbeat
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
-
-	// Простейший способ: broker.Subscribe вызывает handler на каждое событие (внутри NATS sub)
 	errCh := make(chan error, 1)
 
 	go func() {
-		errCh <- h.Broker.Subscribe(ctx, subject, "", "", func(evt anyEvent) error {
+		errCh <- h.Broker.Subscribe(ctx, subject, "", "", func(evt domain.Event) error {
 			b, _ := json.Marshal(evt)
-			fmt.Fprintf(w, "event: message\ndata: %s\n\n", b)
+			if _, err := fmt.Fprintf(w, "event: message\ndata: %s\n\n", b); err != nil {
+				return err
+			}
 			flusher.Flush()
 			return nil
 		})
@@ -56,12 +63,8 @@ func (h *SSEHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		case <-ticker.C:
-			fmt.Fprintf(w, "event: ping\ndata: {}\n\n")
+			_, _ = fmt.Fprintf(w, "event: ping\ndata: {}\n\n")
 			flusher.Flush()
 		}
 	}
 }
-
-// anyEvent — подставьте ваш domain.Event;
-// здесь просто заглушка, чтобы показать поток.
-type anyEvent struct{}
