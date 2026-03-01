@@ -33,3 +33,9 @@ nats-sub:
 # http://localhost:9001  (login: minioadmin / minioadmin)
 minio-open:
 	@echo "MinIO Console: http://localhost:9001"
+
+minio-ready:
+	curl -v http://localhost:9000/minio/health/ready
+
+nats-ready:
+	curl http://localhost:8222/varz

@@ -1,0 +1,41 @@
+{
+  "name": "backend-dev",
+  "dockerComposeFile": "../docker-compose.yml",
+  "service": "api",
+  "workspaceFolder": "/workspace/project",
+  "runServices": [
+    "db",
+    "nats",
+    "minio",
+    "minio-init"
+  ],
+  "shutdownAction": "stopCompose",
+  "remoteUser": "root",
+  "overrideCommand": false,
+  "features": {
+    "ghcr.io/devcontainers/features/go:1": {
+      "version": "1.22"
+    },
+    "ghcr.io/devcontainers/features/git:1": {}
+  },
+  "postCreateCommand": "go mod tidy",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.go",
+        "eamodio.gitlens",
+        "ms-azuretools.vscode-docker",
+        "streetsidesoftware.code-spell-checker"
+      ],
+      "settings": {
+        "go.useLanguageServer": true,
+        "go.lintTool": "golangci-lint",
+        "go.formatTool": "gofmt",
+        "go.testFlags": [
+          "-v"
+        ],
+        "editor.formatOnSave": true
+      }
+    }
+  }
+}

@@ -111,10 +111,8 @@ All configuration must be injected via environment variables.
 │   │   └── analysis/
 │
 │
-├── docker/
-│   ├── docker-compose.yml
-│   ├── Dockerfile
-│
+├── docker-compose.yml
+├── Dockerfile
 ├── Makefile
 ├── .env
 └── README.md
