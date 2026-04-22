@@ -26,8 +26,8 @@ db-psql:
 	docker compose exec db psql -U app -d app
 
 # Quick NATS debugging (no local nats tools needed)
-nats-sub:
-	docker compose exec nats sh -lc "nats --version >/dev/null 2>&1 || echo 'No nats cli in image'; echo 'Tip: use http://localhost:8222 for monitoring'"
+# nats-sub:
+# 	docker compose exec nats sh -lc "nats --version >/dev/null 2>&1 || echo 'no nats cli in image'; echo ' use http://localhost:8222 for monitoring'"
 
 # Open MinIO Console in browser manually:
 # http://localhost:9001  (login: minioadmin / minioadmin)

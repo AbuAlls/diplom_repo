@@ -1,0 +1,14 @@
+DROP TABLE IF EXISTS plan_item_artifacts;
+DROP TABLE IF EXISTS documents;
+DROP TABLE IF EXISTS document_categories;
+DROP TABLE IF EXISTS group_plan_relations;
+DROP TABLE IF EXISTS group_folder_relations;
+DROP TABLE IF EXISTS folders;
+DROP TABLE IF EXISTS plan_items;
+DROP TABLE IF EXISTS plan_goals;
+DROP TABLE IF EXISTS plans;
+DROP TABLE IF EXISTS user_group_relations;
+DROP TABLE IF EXISTS group_properties;
+DROP TABLE IF EXISTS properties;
+DROP TABLE IF EXISTS groups;
+DROP TABLE IF EXISTS users;

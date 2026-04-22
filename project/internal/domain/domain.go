@@ -3,6 +3,8 @@ package domain
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
+	rm "math/rand"
 	"time"
 )
 
@@ -38,7 +40,14 @@ type Event struct {
 func NewEventID() string {
 	buf := make([]byte, 16)
 	if _, err := rand.Read(buf); err != nil {
-		return time.Now().UTC().Format("20060102150405.000000000")
+		return fallbackID()
 	}
 	return hex.EncodeToString(buf)
+}
+
+func fallbackID() string {
+	// Комбинация времени и псевдослучайного числа для уменьшения коллизий
+	return fmt.Sprintf("%d-%d",
+		time.Now().UTC().Format("20060102150405.000000000"),
+		rm.New(rm.NewSource(time.Now().UnixNano())).Uint64())
 }

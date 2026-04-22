@@ -26,6 +26,13 @@ type AuthResult struct {
 	UserID            string
 }
 
+var dummyHash []byte
+
+func init() {
+	// dummy для сравнения пустых юзеров
+	dummyHash, _ = bcrypt.GenerateFromPassword([]byte("dummy-secret"), bcrypt.DefaultCost)
+}
+
 func (s *AuthService) Register(ctx context.Context, email, password, userAgent, ip string) (AuthResult, error) {
 	email = strings.TrimSpace(strings.ToLower(email))
 	if email == "" || len(password) < 8 {
@@ -46,9 +53,10 @@ func (s *AuthService) Login(ctx context.Context, email, password, userAgent, ip 
 	email = strings.TrimSpace(strings.ToLower(email))
 	user, err := s.Users.GetByEmail(ctx, email)
 	if err != nil {
+		bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
 		return AuthResult{}, errors.New("invalid credentials")
 	}
-	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)) != nil {
+	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)) != nil { // constant time сравнение
 		return AuthResult{}, errors.New("invalid credentials")
 	}
 	return s.newSession(ctx, user.ID, userAgent, ip)

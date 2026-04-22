@@ -1,0 +1,1449 @@
+openapi: 3.0.0
+info:
+  title: Document Processing API
+  version: 1.0.0
+  description: |
+    API для загрузки документов и получения аналитики по элементам плана и целей.
+    Эндпоинты аналитики возвращают массив элементов с полной информацией, включая исторические значения.
+
+servers:
+  - url: https://api.example.com/v1
+    description: Публичный сервер (Frontend → Backend)
+  - url: http://ai-model.internal:8080/v1
+    description: Внутренний сервер (Backend → AI Model)
+
+tags:
+  - name: Authentication
+    description: Эндпоинты аутентификации и получения токенов
+  - name: Plans
+    description: Управление планами (создание, чтение, обновление)
+  - name: Goals
+    description: Управление целями внутри плана
+  - name: Plan Items
+    description: Управление элементами плана / подцелями
+  - name: Analytics
+    description: Аналитика по элементам плана (с историческими значениями)
+  - name: Documents
+    description: Загрузка, редактирование, подтверждение и удаление документов
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ==================== Authentication ====================
+  /auth/token:
+    post:
+      tags:
+        - Authentication
+      summary: Получить токены доступа по логину и паролю (OAuth 2.0 password flow)
+      operationId: getToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                grant_type:
+                  type: string
+                  enum:
+                    - password
+                  default: password
+                username:
+                  type: string
+                password:
+                  type: string
+              required:
+                - username
+                - password
+      responses:
+        '200':
+          description: Успешная аутентификация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          description: Неверный запрос
+        '401':
+          description: Неверные учётные данные
+        '500':
+          description: Внутренняя ошибка сервера
+
+  # ==================== Plans ====================
+  /plans:
+    get:
+      tags:
+        - Plans
+      summary: Получить список планов пользователя (с пагинацией)
+      operationId: getPlans
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanListResponse'
+        '401':
+          description: Отсутствует или недействительный Access Token
+        '500':
+          description: Внутренняя ошибка сервера
+
+    post:
+      tags:
+        - Plans
+      summary: Создать новый план
+      operationId: createPlan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePlanRequest'
+      responses:
+        '201':
+          description: План успешно создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '400':
+          description: Некорректные данные
+        '401':
+          description: Отсутствует или недействительный Access Token
+        '500':
+          description: Внутренняя ошибка сервера
+
+  /plans/{id_plan}:
+    get:
+      tags:
+        - Plans
+      summary: Получить детальную информацию о плане
+      operationId: getPlanById
+      parameters:
+        - name: id_plan
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '401':
+          description: Отсутствует или недействительный Access Token
+        '403':
+          description: Нет доступа
+        '404':
+          description: План не найден
+        '500':
+          description: Внутренняя ошибка сервера
+
+    patch:
+      tags:
+        - Plans
+      summary: Обновить существующий план (частичное обновление)
+      operationId: updatePlan
+      parameters:
+        - name: id_plan
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePlanRequest'
+      responses:
+        '200':
+          description: План обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '400':
+          description: Некорректные данные
+        '401':
+          description: Отсутствует или недействительный Access Token
+        '403':
+          description: Нет доступа
+        '404':
+          description: План не найден
+        '500':
+          description: Внутренняя ошибка сервера
+
+  # ==================== Goals ====================
+  /plans/{id_plan}/goals:
+    get:
+      tags:
+        - Goals
+      summary: Получить список целей плана (с пагинацией)
+      operationId: getPlanGoals
+      parameters:
+        - name: id_plan
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalListResponse'
+        '401':
+          description: Отсутствует или недействительный Access Token
+        '403':
+          description: Нет доступа
+        '404':
+          description: План не найден
+        '500':
+          description: Внутренняя ошибка сервера
+
+    post:
+      tags:
+        - Goals
+      summary: Создать новую цель в плане
+      operationId: createGoal
+      parameters:
+        - name: id_plan
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGoalRequest'
+      responses:
+        '201':
+          description: Цель успешно создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Goal'
+        '400':
+          description: Некорректные данные
+        '401':
+          description: Отсутствует или недействительный Access Token
+        '403':
+          description: Нет доступа
+        '404':
+          description: План не найден
+        '500':
+          description: Внутренняя ошибка сервера
+
+  /plans/{id_plan}/goals/{id_goal}:
+    patch:
+      tags:
+        - Goals
+      summary: Обновить существующую цель (частичное обновление)
+      operationId: updateGoal
+      parameters:
+        - name: id_plan
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: id_goal
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateGoalRequest'
+      responses:
+        '200':
+          description: Цель обновлена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Goal'
+        '400':
+          description: Некорректные данные
+        '401':
+          description: Отсутствует или недействительный Access Token
+        '403':
+          description: Нет доступа
+        '404':
+          description: План или цель не найдены
+        '500':
+          description: Внутренняя ошибка сервера
+
+  # ==================== Plan Items ====================
+  /plans/{id_plan}/items:
+    get:
+      tags:
+        - Plan Items
+      summary: Получить все элементы плана (плоский список без аналитики)
+      operationId: getAllPlanItems
+      parameters:
+        - name: id_plan
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanItemListResponse'
+        '401':
+          description: Отсутствует или недействительный Access Token
+        '403':
+          description: Нет доступа
+        '404':
+          description: План не найден
+        '500':
+          description: Внутренняя ошибка сервера
+
+  /plans/{id_plan}/goals/{id_goal}/items:
+    get:
+      tags:
+        - Plan Items
+      summary: Получить список элементов цели (с пагинацией)
+      operationId: getGoalItems
+      parameters:
+        - name: id_plan
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: id_goal
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanItemListResponse'
+        '401':
+          description: Отсутствует или недействительный Access Token
+        '403':
+          description: Нет доступа
+        '404':
+          description: План или цель не найдены
+        '500':
+          description: Внутренняя ошибка сервера
+
+    post:
+      tags:
+        - Plan Items
+      summary: Создать новый элемент (подцель) в цели
+      operationId: createPlanItem
+      parameters:
+        - name: id_plan
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: id_goal
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePlanItemRequest'
+      responses:
+        '201':
+          description: Элемент успешно создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanItem'
+        '400':
+          description: Некорректные данные
+        '401':
+          description: Отсутствует или недействительный Access Token
+        '403':
+          description: Нет доступа
+        '404':
+          description: План или цель не найдены
+        '500':
+          description: Внутренняя ошибка сервера
+
+  /plans/{id_plan}/goals/{id_goal}/items/{id_item}:
+    patch:
+      tags:
+        - Plan Items
+      summary: Обновить существующий элемент (подцель) (частичное обновление)
+      operationId: updatePlanItem
+      parameters:
+        - name: id_plan
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: id_goal
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: id_item
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePlanItemRequest'
+      responses:
+        '200':
+          description: Элемент обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanItem'
+        '400':
+          description: Некорректные данные
+        '401':
+          description: Отсутствует или недействительный Access Token
+        '403':
+          description: Нет доступа
+        '404':
+          description: План, цель или элемент не найдены
+        '500':
+          description: Внутренняя ошибка сервера
+
+  # ==================== Analytics ====================
+  /plans/{id_plan}/items/analytics:
+    get:
+      tags:
+        - Analytics
+      summary: Получить аналитику по всем элементам плана (с пагинацией и историей)
+      operationId: getAllPlanItemsAnalytics
+      parameters:
+        - name: id_plan
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanItemAnalyticsListResponse'
+        '401':
+          description: Отсутствует или недействительный Access Token
+        '403':
+          description: Нет доступа
+        '404':
+          description: План не найден
+        '500':
+          description: Внутренняя ошибка сервера
+
+  /plans/{id_plan}/goals/{id_goal}/items/analytics:
+    get:
+      tags:
+        - Analytics
+      summary: Получить аналитику по элементам цели (с пагинацией и историей)
+      operationId: getGoalItemsAnalytics
+      parameters:
+        - name: id_plan
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: id_goal
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanItemAnalyticsListResponse'
+        '401':
+          description: Отсутствует или недействительный Access Token
+        '403':
+          description: Нет доступа
+        '404':
+          description: План или цель не найдены
+        '500':
+          description: Внутренняя ошибка сервера
+
+  /plans/{id_plan}/goals/{id_goal}/items/{id_item}/analytics:
+    get:
+      tags:
+        - Analytics
+      summary: Получить детальную аналитику по элементу цели (с историей)
+      operationId: getGoalItemAnalytics
+      parameters:
+        - name: id_plan
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: id_goal
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: id_item
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalItemAnalytics'
+        '401':
+          description: Отсутствует или недействительный Access Token
+        '403':
+          description: Нет доступа
+        '404':
+          description: План, цель или элемент не найдены
+        '500':
+          description: Внутренняя ошибка сервера
+
+  # ==================== Documents ====================
+  /documents/upload/{id_plan_item}:
+    post:
+      tags:
+        - Documents
+      summary: Загрузить документ для распознавания
+      operationId: uploadDocument
+      parameters:
+        - name: id_plan_item
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+              required:
+                - file
+      responses:
+        '200':
+          description: Документ успешно обработан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentResponse'
+        '400':
+          description: Некорректный запрос
+        '401':
+          description: Отсутствует или недействительный Access Token
+        '403':
+          description: Недостаточно прав
+        '404':
+          description: Элемент плана не найден
+        '500':
+          description: Ошибка сервера или AI-модели
+
+  /documents/{id_document}:
+    get:
+      tags:
+        - Documents
+      summary: Получить информацию о документе
+      operationId: getDocumentById
+      parameters:
+        - name: id_document
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentResponse'
+        '401':
+          description: Отсутствует или недействительный Access Token
+        '403':
+          description: Нет доступа
+        '404':
+          description: Документ не найден
+        '500':
+          description: Внутренняя ошибка сервера
+
+    patch:
+      tags:
+        - Documents
+      summary: Изменить поля распознанного документа (частичное обновление)
+      operationId: updateDocument
+      parameters:
+        - name: id_document
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateDocumentRequest'
+      responses:
+        '200':
+          description: Документ обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentResponse'
+        '400':
+          description: Некорректные данные
+        '401':
+          description: Отсутствует или недействительный Access Token
+        '403':
+          description: Нет доступа
+        '404':
+          description: Документ не найден
+        '500':
+          description: Внутренняя ошибка сервера
+
+    delete:
+      tags:
+        - Documents
+      summary: Удалить документ
+      operationId: deleteDocument
+      parameters:
+        - name: id_document
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '204':
+          description: Документ успешно удалён
+        '401':
+          description: Отсутствует или недействительный Access Token
+        '403':
+          description: Нет доступа
+        '404':
+          description: Документ не найден
+        '500':
+          description: Внутренняя ошибка сервера
+
+  /documents/{id_document}/confirm:
+    post:
+      tags:
+        - Documents
+      summary: Подтвердить корректность распознавания документа
+      description: |
+        Пользователь подтверждает, что данные документа распознаны верно.
+        Статус документа меняется на "confirmed". При необходимости может
+        инициировать обновление связанного элемента плана.
+      operationId: confirmDocument
+      parameters:
+        - name: id_document
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Документ подтверждён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentResponse'
+        '401':
+          description: Отсутствует или недействительный Access Token
+        '403':
+          description: Нет доступа
+        '404':
+          description: Документ не найден
+        '409':
+          description: Документ уже подтверждён или находится в недопустимом статусе
+        '500':
+          description: Внутренняя ошибка сервера
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # ---------- Token ----------
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_in:
+          type: integer
+        token_type:
+          type: string
+      required:
+        - access_token
+        - refresh_token
+        - expires_in
+        - token_type
+
+    # ---------- Requests ----------
+    CreatePlanRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          maxLength: 50
+      required:
+        - name
+
+    UpdatePlanRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          maxLength: 50
+      minProperties: 1
+
+    CreateGoalRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        sort_order:
+          type: integer
+      required:
+        - name
+
+    UpdateGoalRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        sort_order:
+          type: integer
+      minProperties: 1
+
+    CreatePlanItemRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        sort_order:
+          type: integer
+        item_type:
+          type: string
+          maxLength: 50
+        status:
+          type: string
+          maxLength: 50
+        target_value:
+          type: number
+          format: float
+        current_value:
+          type: number
+          format: float
+        unit:
+          type: string
+          maxLength: 50
+      required:
+        - name
+
+    UpdatePlanItemRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        sort_order:
+          type: integer
+        item_type:
+          type: string
+          maxLength: 50
+        status:
+          type: string
+          maxLength: 50
+        target_value:
+          type: number
+          format: float
+        current_value:
+          type: number
+          format: float
+        unit:
+          type: string
+          maxLength: 50
+      minProperties: 1
+
+    UpdateDocumentRequest:
+      type: object
+      description: Поля, которые можно отредактировать вручную после распознавания
+      properties:
+        recognized_category_id:
+          type: integer
+          format: int64
+          nullable: true
+        document_date:
+          type: string
+          format: date
+          nullable: true
+        external_number:
+          type: string
+          nullable: true
+        organization_name:
+          type: string
+          nullable: true
+        inn:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        deadlines:
+          type: array
+          items:
+            type: string
+            format: date
+          nullable: true
+        personal_data:
+          type: array
+          items:
+            type: string
+          nullable: true
+        organization_data:
+          type: array
+          items:
+            type: string
+          nullable: true
+        prices:
+          type: array
+          items:
+            type: string
+          nullable: true
+        quantities:
+          type: array
+          items:
+            type: integer
+          nullable: true
+        product_names:
+          type: array
+          items:
+            type: string
+          nullable: true
+        contract_numbers:
+          type: array
+          items:
+            type: string
+          nullable: true
+      minProperties: 1
+
+    # ---------- Responses ----------
+    Plan:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        created_by:
+          type: integer
+          format: int64
+        status:
+          type: string
+          maxLength: 50
+      required:
+        - id
+        - name
+        - created_by
+        - status
+
+    PlanDetail:
+      allOf:
+        - $ref: '#/components/schemas/Plan'
+        - type: object
+          properties:
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
+          required:
+            - created_at
+            - updated_at
+
+    PlanListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Plan'
+        meta:
+          type: object
+          properties:
+            page:
+              type: integer
+            size:
+              type: integer
+            total:
+              type: integer
+            total_pages:
+              type: integer
+          required:
+            - page
+            - size
+            - total
+            - total_pages
+      required:
+        - items
+        - meta
+
+    Goal:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        sort_order:
+          type: integer
+      required:
+        - id
+        - name
+        - sort_order
+
+    GoalListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Goal'
+        meta:
+          type: object
+          properties:
+            page:
+              type: integer
+            size:
+              type: integer
+            total:
+              type: integer
+            total_pages:
+              type: integer
+          required:
+            - page
+            - size
+            - total
+            - total_pages
+      required:
+        - items
+        - meta
+
+    PlanItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        goal_id:
+          type: integer
+          format: int64
+        goal_name:
+          type: string
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        sort_order:
+          type: integer
+        item_type:
+          type: string
+          maxLength: 50
+          nullable: true
+        status:
+          type: string
+          maxLength: 50
+          nullable: true
+        target_value:
+          type: number
+          format: float
+          nullable: true
+        current_value:
+          type: number
+          format: float
+          nullable: true
+        unit:
+          type: string
+          maxLength: 50
+          nullable: true
+        progress_percent:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+          nullable: true
+      required:
+        - id
+        - goal_id
+        - name
+        - sort_order
+
+    PlanItemListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanItem'
+        meta:
+          type: object
+          properties:
+            page:
+              type: integer
+            size:
+              type: integer
+            total:
+              type: integer
+            total_pages:
+              type: integer
+          required:
+            - page
+            - size
+            - total
+            - total_pages
+      required:
+        - items
+        - meta
+
+    PlanItemAnalytics:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        goal_id:
+          type: integer
+          format: int64
+        goal_name:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        sort_order:
+          type: integer
+        item_type:
+          type: string
+        status:
+          type: string
+        target_value:
+          type: number
+          format: float
+          nullable: true
+        current_value:
+          type: number
+          format: float
+          nullable: true
+        unit:
+          type: string
+          nullable: true
+        progress_percent:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        historic_values:
+          type: array
+          items:
+            $ref: '#/components/schemas/HistoricValue'
+      required:
+        - id
+        - goal_id
+        - goal_name
+        - name
+        - sort_order
+        - item_type
+        - status
+        - created_at
+        - updated_at
+        - historic_values
+
+    PlanItemAnalyticsListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanItemAnalytics'
+        meta:
+          type: object
+          properties:
+            page:
+              type: integer
+            size:
+              type: integer
+            total:
+              type: integer
+            total_pages:
+              type: integer
+          required:
+            - page
+            - size
+            - total
+            - total_pages
+      required:
+        - items
+        - meta
+
+    GoalItemAnalytics:
+      type: object
+      properties:
+        goal_id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        item_type:
+          type: string
+        status:
+          type: string
+        target_value:
+          type: number
+          format: float
+          nullable: true
+        current_value:
+          type: number
+          format: float
+          nullable: true
+        unit:
+          type: string
+          nullable: true
+        progress_percent:
+          type: number
+          format: float
+          nullable: true
+        sort_order:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        historic_values:
+          type: array
+          items:
+            $ref: '#/components/schemas/HistoricValue'
+      required:
+        - goal_id
+        - name
+        - item_type
+        - status
+        - sort_order
+        - created_at
+        - updated_at
+        - historic_values
+
+    HistoricValue:
+      type: object
+      properties:
+        value:
+          type: number
+          format: float
+        recorded_at:
+          type: string
+          format: date-time
+        comment:
+          type: string
+          nullable: true
+      required:
+        - value
+        - recorded_at
+
+    DocumentResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        plan_item_id:
+          type: integer
+          format: int64
+          description: ID элемента плана, к которому привязан документ
+        recognized_text:
+          type: string
+        structured_json:
+          type: object
+        recognized_category_id:
+          type: integer
+          format: int64
+          nullable: true
+        confidence_score:
+          type: number
+          format: float
+          nullable: true
+        model_version:
+          type: string
+          nullable: true
+        document_date:
+          type: string
+          format: date
+          nullable: true
+        external_number:
+          type: string
+          nullable: true
+        organization_name:
+          type: string
+          nullable: true
+        inn:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        file_size:
+          type: integer
+          format: int64
+          nullable: true
+        deadlines:
+          type: array
+          items:
+            type: string
+            format: date
+          nullable: true
+        personal_data:
+          type: array
+          items:
+            type: string
+          nullable: true
+        organization_data:
+          type: array
+          items:
+            type: string
+          nullable: true
+        prices:
+          type: array
+          items:
+            type: string
+          nullable: true
+        quantities:
+          type: array
+          items:
+            type: integer
+          nullable: true
+        product_names:
+          type: array
+          items:
+            type: string
+          nullable: true
+        contract_numbers:
+          type: array
+          items:
+            type: string
+          nullable: true
+        status:
+          type: string
+          enum: [pending, confirmed, rejected]
+          description: Статус проверки документа
+          example: pending
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - plan_item_id
+        - recognized_text
+        - structured_json
+        - status
+        - created_at
+        - updated_at
