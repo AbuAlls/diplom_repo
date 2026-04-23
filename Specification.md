@@ -1,457 +1,330 @@
-DocsApp — Backend Specification
+# Specification
 
-Architecture: Variant A (Modular Monolith + Async Pipeline)
-Language: Go (1.22+)
+## Project overview
 
-1. Project Goal
+This project implements an MVP (beta) version of a document storage and analysis system.
 
-Build a backend system that:
+The system is designed to:
+- allow users to upload and manage documents
+- organize documents in folders
+- store structured metadata
+- perform asynchronous document analysis (OCR / LLM-based)
+- expose API for mobile applications
 
-Allows users to upload documents
+At the current stage, the system prioritizes:
+- simplicity
+- fast iteration
+- clear architecture
+- testability
 
-Stores documents in S3-compatible object storage
+---
 
-Runs asynchronous OCR + LLM analysis (mock for now)
+## MVP scope
 
-Saves structured results in SQL format
+### Included
+- authentication (JWT-based)
+- document upload and storage
+- folder hierarchy
+- document metadata storage
+- basic document status lifecycle
+- simple async processing (without message broker)
+- API for mobile clients
+- local development via ngrok
 
-Ensures strict tenant isolation (users access only their data)
+### Not included (for MVP)
+- no NATS / message broker
+- no event streaming infrastructure
+- no web frontend
+- no complex RBAC system
+- no distributed microservices
+- no WebSocket layer (SSE optional later)
 
-Supports web and mobile clients
+---
 
-Is testable, scalable, and containerized
+## System architecture
 
-Is safe to evolve with Codex assistance
+The system follows a simplified modular architecture:
 
-2. Architecture Overview
-2.1 Pattern
+- HTTP API server (Go)
+- PostgreSQL database
+- Object storage (MinIO / S3-compatible)
+- Background processing (in-process or simple worker)
+- Mobile clients (external)
 
-Modular Monolith + Async Processing Pipeline
+No message broker is used at this stage.
 
-Two Go binaries:
+---
 
-cmd/api — HTTP API
+## Development environment
 
-cmd/worker — async job processor
+### ngrok usage
 
-External services:
+For MVP, ngrok is used to expose local backend services to mobile devices.
 
-Postgres (Core DB)
+Flow:
 
-Postgres (Analysis DB)
+mobile app → HTTPS (ngrok) → local backend (HTTP)
 
-NATS (JetStream enabled)
+This allows:
+- testing on real mobile devices
+- avoiding TLS setup
+- rapid iteration
 
-MinIO (S3-compatible storage)
+Important constraints:
+- backend runs locally
+- ngrok provides temporary public HTTPS endpoint
+- API must be compatible with HTTPS clients
 
-2.2 System Flow
+---
 
-Client uploads document:
+## High-level flow
 
-Client → API → Object Storage (S3)
-↓
-Core DB (documents + jobs)
-↓
-NATS (JetStream)
-↓
-Worker
-OCR → LLM → Normalize
-↓
-Analysis DB
-↓
-jobs.completed
-↓
-SSE → Client
+### Document upload
 
-3. Development Environment
-3.1 Docker-First
+1. mobile client sends upload request
+2. backend receives file
+3. file is stored in object storage
+4. metadata is stored in PostgreSQL
+5. document status is set to `uploaded`
+6. backend triggers async processing (internal)
 
-All development must run through Docker Compose.
+---
 
-No direct usage of local:
+### Document processing (simplified async)
 
-Postgres
+For MVP, async processing is implemented without NATS.
 
-NATS
+Possible implementation:
+- goroutine-based worker
+- simple job queue in database
+- background worker loop
 
-MinIO
+Flow:
 
-Command:
+1. document marked as `processing`
+2. worker picks document
+3. OCR / LLM service is called
+4. extracted data is stored
+5. document status updated (`processed` or `failed`)
 
-make up
+---
 
-3.2 Environment Configuration
+## API design
 
-.env file controls configuration.
+The backend exposes a REST API used by mobile clients.
 
-No secrets should be hardcoded.
+### General rules
+- JSON-based
+- stateless
+- JWT authentication
+- clear request/response contracts
+- explicit error responses
 
-All configuration must be injected via environment variables.
+### Core domains
 
-4. Repository Structure
-.
-├──project/
-│   ├── cmd/
-│   │   ├── api/
-│   │   └── worker/
-│   │
-│   ├── internal/
-│   │   ├── domain/
-│   │   ├── ports/
-│   │   ├── usecase/
-│   │   ├── adapters/
-│   │   │   ├── pgcore/
-│   │   │   ├── pganalysis/
-│   │   │   ├── nats/
-│   │   │   ├── s3/
-│   │   │   └── httpapi/
-│   │
-│   ├── migrations/
-│   │   ├── core/
-│   │   └── analysis/
-│
-│
-├── docker-compose.yml
-├── Dockerfile
-├── Makefile
-├── .env
-└── README.md
+- auth
+- users
+- folders
+- documents
+- plans (optional MVP subset)
+- analysis results
 
-5. Data Model
-5.1 Core Database
-Tables
+---
 
-users
-refresh_sessions
-documents
-jobs
-job_steps
-(optional) outbox
+## Authentication
 
-Enums
+Authentication is based on JWT tokens.
 
-doc_status:
+Flow:
+1. user signs in
+2. receives access token
+3. token is sent in `Authorization: Bearer` header
 
-UPLOADED
+No complex refresh rotation is required for MVP.
 
-PROCESSING
+---
 
-READY
+## Data model
 
-FAILED
+### Core data
+- users
+- groups (basic, optional usage)
+- folders
+- documents
+- plans
+- plan goals
+- plan items
 
-job_status:
+### Analysis data
+- extracted document data
+- audit checks
+- analytics reports
 
-CREATED
+For MVP, both may live in the same database.
 
-RUNNING
+---
 
-COMPLETED
+## Folder system
 
-FAILED
+Folders:
+- hierarchical (parent_id)
+- owned by user
+- may be linked to:
+  - plan
+  - goal
+  - item
 
-step_name:
+Used for:
+- organization
+- navigation
+- grouping documents
 
-OCR
+---
 
-LLM
+## Document model
 
-NORMALIZE
+Documents contain:
 
-step_status:
+- metadata (title, category, dates, organization info)
+- file reference (object storage path)
+- status
+- extracted arrays (optional)
+- timestamps
 
-PENDING
+### Status lifecycle
 
-RUNNING
+uploaded → processing → processed
+                     ↘ failed
 
-COMPLETED
+---
 
-FAILED
+## Async processing (MVP)
 
-5.2 Analysis Database
+No message broker is used.
 
-extractions
-extracted_fields
+Instead:
+- simple worker loop or goroutines
+- optional DB-based queue
 
-Each extraction is tied to:
+Requirements:
+- idempotent processing
+- safe retries
+- clear status updates
 
-document_id
+---
 
-owner_id
+## Storage
 
-6. Tenant Isolation (CRITICAL)
+### PostgreSQL
+Used for:
+- all relational data
+- document metadata
+- status tracking
+- analysis results
 
-All queries MUST filter by:
+### Object storage
+Used for:
+- raw uploaded files
+- generated artifacts (optional)
 
-owner_id = current_user_id
+---
 
+## Error handling
 
-No shared queries.
-No cross-user joins.
-No admin bypass logic unless explicitly defined.
+Errors must:
+- be explicit
+- use consistent structure
+- not leak internal details
 
-7. Authentication
-7.1 Requirements
+Example:
 
-Password hashing: bcrypt or argon2id
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Invalid request"
+  }
+}
 
-Access token: JWT (15 minutes)
+---
 
-Refresh token:
+## Logging
 
-Stored in HttpOnly cookie
+Minimal logging required:
 
-Secure in production
+- request logs
+- error logs
+- processing logs
 
-SameSite=Lax
+Future improvements:
+- structured logging
+- correlation IDs
 
-Path=/auth/refresh
+---
 
-Access token is returned in JSON.
+## Testing
 
-Refresh token is never exposed to JavaScript.
+At minimum:
 
-7.2 Endpoints
+- unit tests for use cases
+- repository tests (optional)
+- handler tests for key endpoints
 
-POST /auth/register
-POST /auth/login
-POST /auth/refresh
-POST /auth/logout
+Run after changes:
 
-All protected routes require:
+go test ./...
 
-Authorization: Bearer <access_token>
+---
 
-8. Async Processing
-8.1 JetStream
+## Code structure
 
-Stream name: DOCS
-Subjects: jobs.>
+Expected structure:
 
-Event types:
+cmd/
+internal/
+  domain/
+  ports/
+  usecase/
+  adapters/
+    http/
+    pgcore/
+    storage/
+    analysis/
+migrations/
+docs/
 
-jobs.created
+---
 
-jobs.step.requested
+## Design principles
 
-jobs.step.completed
+- business logic in `usecase`
+- adapters only perform IO
+- handlers only map transport
+- avoid premature complexity
+- prefer explicit code over abstraction
+- keep MVP simple
 
-jobs.completed
+---
 
-jobs.failed
+## Future evolution (not part of MVP)
 
-8.2 UI Realtime (Plain NATS)
+- introduce NATS for async processing
+- separate analysis service
+- add web frontend
+- introduce WebSocket/SSE
+- improve RBAC
+- split core and analytics databases
+- add observability (metrics, tracing)
 
-Subject:
+---
 
-ui.jobs.{job_id}
+## Summary
 
+This MVP is intentionally simple:
 
-Used only for SSE streaming.
+- HTTP-only backend
+- no message broker
+- mobile-first API
+- ngrok for external access
+- minimal async processing
 
-8.3 Event Envelope
-
-All events must contain:
-
-event_id
-
-occurred_at
-
-type
-
-user_id
-
-document_id
-
-job_id
-
-step (optional)
-
-attempt (optional)
-
-data (JSON payload)
-
-9. Pipeline Logic
-9.1 Happy Path
-
-API receives upload
-
-File stored in S3
-
-documents row created
-
-jobs row created
-
-Publish jobs.created
-
-Worker processes:
-
-OCR step
-
-LLM step
-
-Normalize
-
-Save to Analysis DB
-
-Mark document READY
-
-Publish jobs.completed
-
-9.2 Retry Logic
-
-Each step:
-
-Must increment attempt counter
-
-Must be idempotent
-
-Must not duplicate results
-
-If attempt >= MAX_ATTEMPTS:
-
-Mark job FAILED
-
-Mark document FAILED
-
-Publish jobs.failed
-
-10. HTTP API
-10.1 Documents
-
-POST /documents
-GET /documents
-GET /documents/{id}
-GET /documents/{id}/download
-GET /documents/{id}/results
-
-10.2 SSE
-
-GET /jobs/{job_id}/events
-
-Content-Type: text/event-stream
-
-Heartbeat every 15 seconds
-
-Subscribe to NATS subject ui.jobs.{job_id}
-
-11. Worker Requirements
-
-Worker must:
-
-Ensure JetStream stream exists at startup
-
-Subscribe to jobs.*
-
-Use durable consumer
-
-Be idempotent
-
-Use context cancellation
-
-Not store state in memory
-
-12. Codex Workflow Rules
-12.1 Branching
-
-Branches:
-
-main — stable
-
-dev — human development
-
-codex — AI editing branch
-
-Codex must:
-
-Never work on main directly
-
-Only modify code in codex branch
-
-Never delete migrations
-
-Never modify docker-compose unless explicitly instructed
-
-Never break port/interface contracts
-
-Never mix domain logic into adapters
-
-12.2 Architectural Guardrails
-
-Codex must:
-
-Keep business logic in usecase layer
-
-Keep IO in adapters
-
-Avoid global state
-
-Use dependency injection
-
-Use context everywhere
-
-Keep handlers thin
-
-13. Testing Strategy
-13.1 Unit Tests
-
-Test usecase layer
-
-Mock ports
-
-No external services
-
-13.2 Integration Tests
-
-Use testcontainers
-
-Spin Postgres + NATS + MinIO
-
-Test full pipeline:
-upload → completed → results available
-
-14. Frontend Assumptions
-
-Frontend is:
-
-Next.js (Hybrid SSR + SPA)
-
-Access token in memory
-
-Refresh cookie HttpOnly
-
-React Query
-
-SSE for status updates
-
-No localStorage token storage
-
-15. Production Hardening (Future)
-
-OpenTelemetry
-
-Prometheus metrics
-
-Rate limiting (Redis)
-
-Presigned uploads
-
-DLQ stream
-
-RLS in Postgres
-
-16. Definition of Done
-
-Feature is complete when:
-
-Migration exists (if DB change)
-
-Unit test exists
-
-Integration test exists (if pipeline-related)
-
-Runs via docker-compose
-
-Passes make test
-
-Does not violate architectural guardrails
+The goal is to validate core functionality quickly before introducing architectural complexity.

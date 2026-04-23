@@ -1,0 +1,1656 @@
+openapi: 3.0.3
+info:
+  title: DocsApp Mobile MVP API
+  version: 1.0.0
+  description: |
+    Combined OpenAPI specification containing two API versions in a single file.
+
+    v0:
+    - Minimal test/MVP API for quick implementation and mobile client integration.
+    - HTTP/JSON only.
+    - Focused on authentication, plans/goals/items, document upload/review, and a single analytics endpoint.
+
+    v1:
+    - Full API version based on the analyst-provided specification.
+    - Preserves broader nested REST structure and analytics endpoints.
+
+servers:
+  - url: https://api.example.com
+    description: Public HTTPS entrypoint (mobile client -> backend via ngrok or deployed API)
+  - url: http://localhost:8080
+    description: Local backend
+
+tags:
+  - name: v0 Authentication
+  - name: v0 Plans
+  - name: v0 Goals
+  - name: v0 Plan Items
+  - name: v0 Documents
+  - name: v0 Analytics
+  - name: v1 Authentication
+  - name: v1 Plans
+  - name: v1 Goals
+  - name: v1 Plan Items
+  - name: v1 Documents
+  - name: v1 Analytics
+
+security:
+  - bearerAuth: []
+
+paths:
+  /v0/auth/token:
+    post:
+      tags: [v0 Authentication]
+      summary: Obtain access and refresh tokens using username and password
+      operationId: v0GetToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                grant_type:
+                  type: string
+                  enum: [password]
+                  default: password
+                username:
+                  type: string
+                password:
+                  type: string
+              required: [username, password]
+      responses:
+        '200':
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v0/plans:
+    get:
+      tags: [v0 Plans]
+      summary: Get current user's plans
+      operationId: v0GetPlans
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Plan list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [v0 Plans]
+      summary: Create a plan
+      operationId: v0CreatePlan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePlanRequest'
+      responses:
+        '201':
+          description: Plan created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v0/plans/{id_plan}/goals:
+    get:
+      tags: [v0 Goals]
+      summary: Get goals for a plan
+      operationId: v0GetPlanGoals
+      parameters:
+        - $ref: '#/components/parameters/IdPlan'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Goal list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [v0 Goals]
+      summary: Create a goal inside a plan
+      operationId: v0CreateGoal
+      parameters:
+        - $ref: '#/components/parameters/IdPlan'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGoalRequest'
+      responses:
+        '201':
+          description: Goal created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Goal'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v0/plans/{id_plan}/goals/{id_goal}/items:
+    get:
+      tags: [v0 Plan Items]
+      summary: Get items for a goal
+      operationId: v0GetGoalItems
+      parameters:
+        - $ref: '#/components/parameters/IdPlan'
+        - $ref: '#/components/parameters/IdGoal'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Plan item list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanItemListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [v0 Plan Items]
+      summary: Create an item inside a goal
+      operationId: v0CreatePlanItem
+      parameters:
+        - $ref: '#/components/parameters/IdPlan'
+        - $ref: '#/components/parameters/IdGoal'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePlanItemRequest'
+      responses:
+        '201':
+          description: Plan item created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanItem'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v0/plans/{id_plan}/goals/{id_goal}/items/{id_item}:
+    patch:
+      tags: [v0 Plan Items]
+      summary: Partially update a plan item
+      operationId: v0UpdatePlanItem
+      parameters:
+        - $ref: '#/components/parameters/IdPlan'
+        - $ref: '#/components/parameters/IdGoal'
+        - $ref: '#/components/parameters/IdItem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePlanItemRequest'
+      responses:
+        '200':
+          description: Plan item updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanItem'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v0/documents/upload/{id_plan_item}:
+    post:
+      tags: [v0 Documents]
+      summary: Upload a document for a plan item
+      description: |
+        Upload starts document processing. For MVP v0 the response may return either
+        an already parsed document or a document in processing status.
+      operationId: v0UploadDocument
+      parameters:
+        - $ref: '#/components/parameters/IdPlanItem'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+              required: [file]
+      responses:
+        '200':
+          description: Document accepted or processed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentResponseV0'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v0/documents:
+    get:
+      tags: [v0 Documents]
+      summary: List documents, optionally filtered by plan item id
+      operationId: v0ListDocuments
+      parameters:
+        - name: plan_item_id
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+          description: Filter documents by plan item id
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Document list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentListResponseV0'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v0/documents/{id_document}:
+    get:
+      tags: [v0 Documents]
+      summary: Get document details
+      operationId: v0GetDocumentById
+      parameters:
+        - $ref: '#/components/parameters/IdDocument'
+      responses:
+        '200':
+          description: Document found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentResponseV0'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    patch:
+      tags: [v0 Documents]
+      summary: Partially update parsed document fields
+      operationId: v0UpdateDocument
+      parameters:
+        - $ref: '#/components/parameters/IdDocument'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateDocumentRequest'
+      responses:
+        '200':
+          description: Document updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentResponseV0'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v0/documents/{id_document}/confirm:
+    post:
+      tags: [v0 Documents]
+      summary: Confirm parsed document correctness
+      operationId: v0ConfirmDocument
+      parameters:
+        - $ref: '#/components/parameters/IdDocument'
+      responses:
+        '200':
+          description: Document confirmed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentResponseV0'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Invalid document state for confirmation
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v0/items/{id_item}/analytics:
+    get:
+      tags: [v0 Analytics]
+      summary: Get analytics for a single item
+      operationId: v0GetItemAnalytics
+      parameters:
+        - $ref: '#/components/parameters/IdItem'
+      responses:
+        '200':
+          description: Analytics found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemAnalyticsV0'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/auth/token:
+    post:
+      tags: [v1 Authentication]
+      summary: Obtain access tokens using login and password (OAuth 2.0 password flow)
+      operationId: v1GetToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                grant_type:
+                  type: string
+                  enum: [password]
+                  default: password
+                username:
+                  type: string
+                password:
+                  type: string
+              required: [username, password]
+      responses:
+        '200':
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/plans:
+    get:
+      tags: [v1 Plans]
+      summary: Get user's plans (paginated)
+      operationId: v1GetPlans
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [v1 Plans]
+      summary: Create a new plan
+      operationId: v1CreatePlan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePlanRequest'
+      responses:
+        '201':
+          description: Plan created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/plans/{id_plan}:
+    get:
+      tags: [v1 Plans]
+      summary: Get plan details
+      operationId: v1GetPlanById
+      parameters:
+        - $ref: '#/components/parameters/IdPlan'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    patch:
+      tags: [v1 Plans]
+      summary: Partially update a plan
+      operationId: v1UpdatePlan
+      parameters:
+        - $ref: '#/components/parameters/IdPlan'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePlanRequest'
+      responses:
+        '200':
+          description: Plan updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/plans/{id_plan}/goals:
+    get:
+      tags: [v1 Goals]
+      summary: Get plan goals (paginated)
+      operationId: v1GetPlanGoals
+      parameters:
+        - $ref: '#/components/parameters/IdPlan'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [v1 Goals]
+      summary: Create a goal inside a plan
+      operationId: v1CreateGoal
+      parameters:
+        - $ref: '#/components/parameters/IdPlan'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGoalRequest'
+      responses:
+        '201':
+          description: Goal created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Goal'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/plans/{id_plan}/goals/{id_goal}:
+    patch:
+      tags: [v1 Goals]
+      summary: Partially update a goal
+      operationId: v1UpdateGoal
+      parameters:
+        - $ref: '#/components/parameters/IdPlan'
+        - $ref: '#/components/parameters/IdGoal'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateGoalRequest'
+      responses:
+        '200':
+          description: Goal updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Goal'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/plans/{id_plan}/items:
+    get:
+      tags: [v1 Plan Items]
+      summary: Get all plan items as a flat list
+      operationId: v1GetAllPlanItems
+      parameters:
+        - $ref: '#/components/parameters/IdPlan'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanItemListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/plans/{id_plan}/goals/{id_goal}/items:
+    get:
+      tags: [v1 Plan Items]
+      summary: Get goal items (paginated)
+      operationId: v1GetGoalItems
+      parameters:
+        - $ref: '#/components/parameters/IdPlan'
+        - $ref: '#/components/parameters/IdGoal'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanItemListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [v1 Plan Items]
+      summary: Create a new plan item inside a goal
+      operationId: v1CreatePlanItem
+      parameters:
+        - $ref: '#/components/parameters/IdPlan'
+        - $ref: '#/components/parameters/IdGoal'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePlanItemRequest'
+      responses:
+        '201':
+          description: Plan item created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanItem'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/plans/{id_plan}/goals/{id_goal}/items/{id_item}:
+    patch:
+      tags: [v1 Plan Items]
+      summary: Partially update an existing plan item
+      operationId: v1UpdatePlanItem
+      parameters:
+        - $ref: '#/components/parameters/IdPlan'
+        - $ref: '#/components/parameters/IdGoal'
+        - $ref: '#/components/parameters/IdItem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePlanItemRequest'
+      responses:
+        '200':
+          description: Plan item updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanItem'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/plans/{id_plan}/items/analytics:
+    get:
+      tags: [v1 Analytics]
+      summary: Get analytics for all plan items (paginated, with history)
+      operationId: v1GetAllPlanItemsAnalytics
+      parameters:
+        - $ref: '#/components/parameters/IdPlan'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanItemAnalyticsListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/plans/{id_plan}/goals/{id_goal}/items/analytics:
+    get:
+      tags: [v1 Analytics]
+      summary: Get analytics for goal items (paginated, with history)
+      operationId: v1GetGoalItemsAnalytics
+      parameters:
+        - $ref: '#/components/parameters/IdPlan'
+        - $ref: '#/components/parameters/IdGoal'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanItemAnalyticsListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/plans/{id_plan}/goals/{id_goal}/items/{id_item}/analytics:
+    get:
+      tags: [v1 Analytics]
+      summary: Get detailed analytics for a goal item (with history)
+      operationId: v1GetGoalItemAnalytics
+      parameters:
+        - $ref: '#/components/parameters/IdPlan'
+        - $ref: '#/components/parameters/IdGoal'
+        - $ref: '#/components/parameters/IdItem'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalItemAnalytics'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/documents/upload/{id_plan_item}:
+    post:
+      tags: [v1 Documents]
+      summary: Upload a document for recognition
+      operationId: v1UploadDocument
+      parameters:
+        - $ref: '#/components/parameters/IdPlanItem'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+              required: [file]
+      responses:
+        '200':
+          description: Document processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          description: Server or AI model error
+
+  /v1/documents/{id_document}:
+    get:
+      tags: [v1 Documents]
+      summary: Get document information
+      operationId: v1GetDocumentById
+      parameters:
+        - $ref: '#/components/parameters/IdDocument'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    patch:
+      tags: [v1 Documents]
+      summary: Partially update recognized document fields
+      operationId: v1UpdateDocument
+      parameters:
+        - $ref: '#/components/parameters/IdDocument'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateDocumentRequest'
+      responses:
+        '200':
+          description: Document updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [v1 Documents]
+      summary: Delete a document
+      operationId: v1DeleteDocument
+      parameters:
+        - $ref: '#/components/parameters/IdDocument'
+      responses:
+        '204':
+          description: Document deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/documents/{id_document}/confirm:
+    post:
+      tags: [v1 Documents]
+      summary: Confirm document recognition correctness
+      operationId: v1ConfirmDocument
+      parameters:
+        - $ref: '#/components/parameters/IdDocument'
+      responses:
+        '200':
+          description: Document confirmed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Document already confirmed or in invalid state
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    Size:
+      name: size
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    IdPlan:
+      name: id_plan
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    IdGoal:
+      name: id_goal
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    IdItem:
+      name: id_item
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    IdPlanItem:
+      name: id_plan_item
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    IdDocument:
+      name: id_document
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+
+  responses:
+    BadRequest:
+      description: Invalid request
+    Unauthorized:
+      description: Missing or invalid access token
+    Forbidden:
+      description: Access denied
+    NotFound:
+      description: Entity not found
+    InternalError:
+      description: Internal server error
+
+  schemas:
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_in:
+          type: integer
+        token_type:
+          type: string
+      required: [access_token, refresh_token, expires_in, token_type]
+
+    CreatePlanRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          maxLength: 50
+      required: [name]
+
+    UpdatePlanRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          maxLength: 50
+      minProperties: 1
+
+    CreateGoalRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        sort_order:
+          type: integer
+      required: [name]
+
+    UpdateGoalRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        sort_order:
+          type: integer
+      minProperties: 1
+
+    CreatePlanItemRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        sort_order:
+          type: integer
+        item_type:
+          type: string
+          maxLength: 50
+        status:
+          type: string
+          maxLength: 50
+        target_value:
+          type: number
+          format: float
+        current_value:
+          type: number
+          format: float
+        unit:
+          type: string
+          maxLength: 50
+      required: [name]
+
+    UpdatePlanItemRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        sort_order:
+          type: integer
+        item_type:
+          type: string
+          maxLength: 50
+        status:
+          type: string
+          maxLength: 50
+        target_value:
+          type: number
+          format: float
+        current_value:
+          type: number
+          format: float
+        unit:
+          type: string
+          maxLength: 50
+      minProperties: 1
+
+    UpdateDocumentRequest:
+      type: object
+      description: Fields that can be manually edited after recognition
+      properties:
+        recognized_category_id:
+          type: integer
+          format: int64
+          nullable: true
+        document_date:
+          type: string
+          format: date
+          nullable: true
+        external_number:
+          type: string
+          nullable: true
+        organization_name:
+          type: string
+          nullable: true
+        inn:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        deadlines:
+          type: array
+          items:
+            type: string
+            format: date
+          nullable: true
+        personal_data:
+          type: array
+          items:
+            type: string
+          nullable: true
+        organization_data:
+          type: array
+          items:
+            type: string
+          nullable: true
+        prices:
+          type: array
+          items:
+            type: string
+          nullable: true
+        quantities:
+          type: array
+          items:
+            type: integer
+          nullable: true
+        product_names:
+          type: array
+          items:
+            type: string
+          nullable: true
+        contract_numbers:
+          type: array
+          items:
+            type: string
+          nullable: true
+      minProperties: 1
+
+    Plan:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        created_by:
+          type: integer
+          format: int64
+        status:
+          type: string
+          maxLength: 50
+      required: [id, name, created_by, status]
+
+    PlanDetail:
+      allOf:
+        - $ref: '#/components/schemas/Plan'
+        - type: object
+          properties:
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
+          required: [created_at, updated_at]
+
+    PlanListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Plan'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+      required: [items, meta]
+
+    Goal:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        sort_order:
+          type: integer
+      required: [id, name, sort_order]
+
+    GoalListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Goal'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+      required: [items, meta]
+
+    PlanItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        goal_id:
+          type: integer
+          format: int64
+        goal_name:
+          type: string
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        sort_order:
+          type: integer
+        item_type:
+          type: string
+          maxLength: 50
+          nullable: true
+        status:
+          type: string
+          maxLength: 50
+          nullable: true
+        target_value:
+          type: number
+          format: float
+          nullable: true
+        current_value:
+          type: number
+          format: float
+          nullable: true
+        unit:
+          type: string
+          maxLength: 50
+          nullable: true
+        progress_percent:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+          nullable: true
+      required: [id, goal_id, name, sort_order]
+
+    PlanItemListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanItem'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+      required: [items, meta]
+
+    HistoricValue:
+      type: object
+      properties:
+        value:
+          type: number
+          format: float
+        recorded_at:
+          type: string
+          format: date-time
+        comment:
+          type: string
+          nullable: true
+      required: [value, recorded_at]
+
+    PlanItemAnalytics:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        goal_id:
+          type: integer
+          format: int64
+        goal_name:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        sort_order:
+          type: integer
+        item_type:
+          type: string
+        status:
+          type: string
+        target_value:
+          type: number
+          format: float
+          nullable: true
+        current_value:
+          type: number
+          format: float
+          nullable: true
+        unit:
+          type: string
+          nullable: true
+        progress_percent:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        historic_values:
+          type: array
+          items:
+            $ref: '#/components/schemas/HistoricValue'
+      required:
+        - id
+        - goal_id
+        - goal_name
+        - name
+        - sort_order
+        - item_type
+        - status
+        - created_at
+        - updated_at
+        - historic_values
+
+    PlanItemAnalyticsListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanItemAnalytics'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+      required: [items, meta]
+
+    GoalItemAnalytics:
+      type: object
+      properties:
+        goal_id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        item_type:
+          type: string
+        status:
+          type: string
+        target_value:
+          type: number
+          format: float
+          nullable: true
+        current_value:
+          type: number
+          format: float
+          nullable: true
+        unit:
+          type: string
+          nullable: true
+        progress_percent:
+          type: number
+          format: float
+          nullable: true
+        sort_order:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        historic_values:
+          type: array
+          items:
+            $ref: '#/components/schemas/HistoricValue'
+      required:
+        - goal_id
+        - name
+        - item_type
+        - status
+        - sort_order
+        - created_at
+        - updated_at
+        - historic_values
+
+    DocumentResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        plan_item_id:
+          type: integer
+          format: int64
+          description: Plan item id linked to the document
+        recognized_text:
+          type: string
+        structured_json:
+          type: object
+          additionalProperties: true
+        recognized_category_id:
+          type: integer
+          format: int64
+          nullable: true
+        confidence_score:
+          type: number
+          format: float
+          nullable: true
+        model_version:
+          type: string
+          nullable: true
+        document_date:
+          type: string
+          format: date
+          nullable: true
+        external_number:
+          type: string
+          nullable: true
+        organization_name:
+          type: string
+          nullable: true
+        inn:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        file_size:
+          type: integer
+          format: int64
+          nullable: true
+        deadlines:
+          type: array
+          items:
+            type: string
+            format: date
+          nullable: true
+        personal_data:
+          type: array
+          items:
+            type: string
+          nullable: true
+        organization_data:
+          type: array
+          items:
+            type: string
+          nullable: true
+        prices:
+          type: array
+          items:
+            type: string
+          nullable: true
+        quantities:
+          type: array
+          items:
+            type: integer
+          nullable: true
+        product_names:
+          type: array
+          items:
+            type: string
+          nullable: true
+        contract_numbers:
+          type: array
+          items:
+            type: string
+          nullable: true
+        status:
+          type: string
+          enum: [pending, confirmed, rejected]
+          description: Document review status
+          example: pending
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required: [id, plan_item_id, recognized_text, structured_json, status, created_at, updated_at]
+
+    DocumentResponseV0:
+      allOf:
+        - $ref: '#/components/schemas/DocumentResponse'
+        - type: object
+          properties:
+            status:
+              type: string
+              enum: [processing, pending_review, confirmed, failed, rejected]
+              description: Expanded status set for MVP processing flow
+              example: processing
+
+    DocumentListResponseV0:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DocumentResponseV0'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+      required: [items, meta]
+
+    ItemAnalyticsV0:
+      type: object
+      properties:
+        item:
+          $ref: '#/components/schemas/PlanItem'
+        latest_document_id:
+          type: integer
+          format: int64
+          nullable: true
+        source_documents_count:
+          type: integer
+          minimum: 0
+        current_value:
+          type: number
+          format: float
+          nullable: true
+        target_value:
+          type: number
+          format: float
+          nullable: true
+        progress_percent:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+          nullable: true
+        unit:
+          type: string
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+        notes:
+          type: array
+          items:
+            type: string
+      required: [item, source_documents_count, updated_at]
+
+    PaginationMeta:
+      type: object
+      properties:
+        page:
+          type: integer
+        size:
+          type: integer
+        total:
+          type: integer
+        total_pages:
+          type: integer
+      required: [page, size, total, total_pages]
