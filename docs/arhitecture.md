@@ -1,338 +1,394 @@
 # Architecture
 
 ## Overview
-This project implements an MVP/beta backend architecture for a document storage and analysis platform.
 
-The system supports:
-- user authentication and authorization
-- document upload and storage
-- folder-based organization
-- metadata persistence
+This project is an MVP backend for a document storage and analysis system.
+
+Current MVP priorities:
+- mobile-first API
+- simple backend architecture
+- fast local iteration
+- testability
+- minimal infrastructure complexity
+
+At the current stage:
+- there is no web frontend
+- mobile applications are the only client applications
+- NATS is not used in MVP
+- ngrok is used in development to expose the local backend to mobile devices over HTTPS
+
+The goal is to validate the core product flow before introducing more complex infrastructure.
+
+## Current MVP scope
+
+The backend currently supports or is expected to support:
+
+- user authentication
+- folder-based document organization
+- document upload
+- document metadata storage
+- object storage integration
 - asynchronous document processing
-- OCR / LLM-based extraction
-- analytical projections and reports
-- support for web and mobile clients
+- OCR / AI-based analysis integration
+- processing status tracking
+- API access for mobile applications
 
-The primary goal of the current stage is to keep the architecture simple, testable, and implementation-friendly while preserving clean separation between business logic and infrastructure.
+Not part of the current MVP:
+- web frontend
+- message broker
+- event-driven architecture with NATS
+- complex RBAC
+- separate production-grade analysis microservice
+- advanced realtime communication
+
+## Development topology
+
+During MVP development, mobile devices connect to the local backend through ngrok.
+
+Flow:
+
+mobile app -> HTTPS via ngrok -> local backend -> PostgreSQL / MinIO / analysis integration
+
+This setup is used to:
+- test real mobile clients
+- avoid local TLS configuration complexity
+- validate API behavior on actual devices
 
 ## Architectural style
-The project follows a modular clean architecture approach.
 
-Main principles:
-- business logic lives in use cases
-- infrastructure details are isolated in adapters
-- domain entities are not coupled to transport or storage
-- external integrations are accessed through ports/interfaces
-- transport layer maps requests/responses and delegates to use cases
+The project follows a pragmatic layered architecture with clean boundaries.
 
-This is not a strict academic clean architecture implementation.
-It is a pragmatic version optimized for MVP speed and maintainability.
+Main rule:
+- business logic lives in `usecase`
+
+Supporting rules:
+- transport layer handles HTTP concerns only
+- adapters perform IO and external integration work
+- domain contains business entities and core concepts
+- ports define interfaces required by the application layer
+
+This is a practical MVP-oriented architecture, not a fully formalized enterprise architecture.
 
 ## Main layers
 
 ### cmd
-Application entrypoints.
+
+Entrypoints for application startup.
 
 Responsibilities:
-- bootstrap configuration
-- create dependencies
-- assemble modules
-- start HTTP server / workers
+- load config
+- initialize dependencies
+- wire modules
+- start HTTP server
+- start background worker if needed
 
 Should not contain:
 - business logic
-- SQL logic
-- transport-specific validation logic
+- SQL queries
+- request validation logic beyond basic bootstrapping
 
 ### domain
-Core business entities and value objects.
+
+Core business concepts and entities.
 
 Examples:
 - user
-- document
+- group
 - folder
+- document
 - plan
 - plan goal
 - plan item
-- notification
 - analysis result
 
 Responsibilities:
-- describe core concepts
-- hold domain invariants where appropriate
+- define important concepts
+- express core invariants where useful
+- remain independent from transport and infrastructure
 
 ### ports
-Interfaces used by use cases to access external dependencies.
+
+Interfaces required by use cases.
 
 Examples:
 - user repository
 - document repository
-- storage client
-- event publisher
-- OCR/analysis gateway
+- folder repository
+- object storage client
+- analysis client
+- processing job interface
 
 Responsibilities:
-- define what use cases need
-- hide adapter-specific details
+- describe what the application needs
+- isolate use cases from implementation details
 
 ### usecase
-The main business logic layer.
+
+Main business logic layer.
 
 Responsibilities:
-- orchestrate flows
-- enforce business rules
-- coordinate repositories, storage, queues, and analysis services
-- define application-level behavior
+- orchestrate application flows
+- validate business rules
+- coordinate repositories and external integrations
+- manage document lifecycle and processing transitions
 
 Examples:
+- sign in user
 - upload document
-- move document to folder
-- create analysis job
-- fetch document status
-- build report
-- manage plan progress
+- place document into folder
+- mark document for processing
+- read processing result
+- fetch user documents
 
 ### adapters
+
 Implementations of ports.
 
 Examples:
 - PostgreSQL repositories
-- MinIO / S3 storage adapters
-- NATS publisher/subscriber
-- HTTP clients for OCR/AI services
-- SSE transport support
+- MinIO / S3 object storage adapter
+- HTTP client for OCR / AI service
+- background worker implementation
 
 Responsibilities:
-- contain IO code
-- translate between external systems and internal models
+- database access
+- storage access
+- integration with external services
+- infrastructure-specific logic
 
 ### transport
-HTTP handlers and DTO mapping.
+
+HTTP layer.
 
 Responsibilities:
-- parse requests
-- validate input
+- parse incoming requests
+- validate transport-level fields
 - call use cases
-- map domain/application results to HTTP responses
+- map results to JSON responses
+- return consistent error responses
 
 Should not contain:
-- core business rules
-- direct persistence logic
-- orchestration logic
+- business orchestration
+- persistence logic
+- hidden cross-module rules
 
 ## Core subsystems
 
-## 1. Auth and access control
-The system uses authenticated users and group-based access relationships.
+## 1. Authentication
 
-Core concepts:
-- users
-- groups
-- group properties / permissions
-- user-group relations
-- group access to folders and plans
+Authentication is JWT-based.
 
-This allows access control to be managed independently from document content.
+Responsibilities:
+- sign in user
+- authenticate requests
+- propagate user identity into use cases
 
-## 2. Document storage
-Documents are uploaded by users and stored as files in object storage.
+The MVP should keep auth simple and predictable.
 
-The backend stores:
-- file metadata
-- ownership / folder placement
-- status
-- extracted arrays / normalized fields
-- category links
-- timestamps
+## 2. Folder and document management
 
-Object storage is used for raw file content.
-PostgreSQL stores metadata and relational state.
+The core user-facing subsystem is document organization.
 
-## 3. Folder hierarchy
-Folders organize documents and may optionally be associated with:
-- plans
-- plan goals
-- plan items
+Folders:
+- may be hierarchical
+- belong to users or are system-managed
+- can group related documents
 
-Folders may also be nested.
+Documents:
+- are uploaded through the API
+- are stored in object storage
+- have metadata in PostgreSQL
+- move through processing statuses
 
-This enables:
-- user-oriented browsing
-- system folders
-- logical grouping of evidence and artifacts
+## 3. Document processing
 
-## 4. Planning domain
-The planning subsystem includes:
-- plans
-- plan goals
-- plan items
-- item-linked artifacts
+Document analysis is asynchronous, but simplified for MVP.
 
-This subsystem is intended to connect operational documents with goals, measurable items, and supporting evidence.
+There is no message broker.
 
-## 5. Analysis subsystem
-Document analysis is logically separated from the core transactional model.
+Recommended MVP approaches:
+- in-process background worker
+- goroutine-triggered processing
+- optional DB-backed job polling loop
 
-The analysis side stores:
-- extracted document data
-- OCR / LLM structured output
-- audit checks
-- analytics reports
-- analytical projections for plans and goals
+Typical flow:
+1. document is uploaded
+2. file is saved to object storage
+3. metadata is persisted
+4. status becomes `uploaded`
+5. backend schedules internal processing
+6. worker moves status to `processing`
+7. OCR / AI analysis is performed
+8. results are saved
+9. status becomes `processed` or `failed`
 
-This separation is useful because:
-- core data is transactional and user-facing
-- analysis data may be heavier, more asynchronous, and more derived
-- the system can evolve toward separate storage or services later
+## 4. Analysis integration
 
-## Data ownership
-The architecture distinguishes between two logical data zones:
+The backend may call an external OCR / AI analysis service.
+
+For MVP this integration should remain simple:
+- HTTP-based
+- explicit request/response contracts
+- clear timeout and retry behavior
+- status persistence in the backend
+
+Analysis output may include:
+- recognized text
+- extracted structured fields
+- validation or audit signals
+- report-oriented derived data
+
+## Data model split
+
+The project distinguishes between two logical data groups.
 
 ### Core data
-Transactional, user-facing, operational data:
+
+Operational and user-facing entities:
 - users
 - groups
 - folders
 - documents
 - plans
-- goals
+- plan goals
 - plan items
 - access relations
 
 ### Analysis data
-Derived, asynchronous, machine-produced, or reporting-oriented data:
-- extracted text
-- structured extraction payloads
+
+Derived or machine-generated entities:
+- extracted document data
 - audit checks
-- analytics reports
-- analytical projections
+- analysis results
+- report data
 
-These zones may live in:
-- separate schemas
-- separate databases
-- or separate services later
+For MVP, both groups may live in the same PostgreSQL database.
+Later they may be split into separate schemas, databases, or services.
 
-For MVP, they may still be hosted together if operationally simpler.
-
-## Request flow
-
-### Synchronous flow
-Typical synchronous request path:
-
-1. client sends HTTP request
-2. handler validates and maps input
-3. handler calls use case
-4. use case loads/saves state through ports
-5. adapters perform DB/storage operations
-6. use case returns result
-7. handler maps result to HTTP response
-
-### Asynchronous flow
-Typical asynchronous document processing path:
-
-1. user uploads document
-2. backend stores file in object storage
-3. backend writes initial metadata and status
-4. backend creates processing job / emits event
-5. worker consumes job
-6. worker calls OCR / AI analysis service
-7. worker persists extraction and analysis results
-8. worker updates document processing status
-9. client fetches updated status or receives live update
-
-## Realtime updates
-For MVP, server-to-client updates should prefer simple mechanisms.
-
-Recommended:
-- SSE for one-way status updates and notifications
-
-Possible use cases:
-- document processing status changes
-- analysis completion
-- notifications
-- long-running job progress
-
-WebSocket support may be added later if bidirectional realtime communication becomes necessary.
-
-## Storage choices
+## Storage
 
 ### PostgreSQL
-Primary relational store.
 
 Used for:
-- transactional data
-- relationships
+- relational business data
+- metadata
+- folder hierarchy
 - statuses
-- access control
-- normalized business entities
+- analysis results
+- plan-related structures
 
 ### Object storage
+
 Used for:
-- raw uploaded files
-- derived artifacts
-- previews or generated files if needed
+- original uploaded files
+- derived artifacts if needed later
 
-### Messaging
-NATS or another broker may be used for:
-- async job dispatch
-- background processing
-- notifications
-- future fan-out scenarios
+MinIO is acceptable for local development and MVP environments.
 
-For MVP, messaging should remain pragmatic and not overcomplicate the request path.
+## API design
 
-## API design principles
-The backend serves both web and mobile clients.
+The backend provides a REST API for mobile clients.
 
-Guidelines:
-- keep contracts explicit
-- use stable JSON response shapes
-- keep auth consistent across clients
-- avoid transport-specific business branching where possible
-- support pagination for list endpoints
-- model long-running operations with status fields
+Principles:
+- JSON request and response bodies
+- JWT in `Authorization: Bearer`
+- explicit resource-oriented endpoints
+- clear error structure
+- stable contracts where possible
+
+The API should be designed primarily around mobile client needs.
 
 ## Error handling
-Errors should be:
-- explicit
-- typed where useful
-- logged with enough context
-- safe for client exposure
 
-Prefer:
-- validation errors for invalid input
-- domain/application errors for business rule violations
-- infrastructure errors wrapped with context
+Errors should:
+- be explicit
+- be consistent across endpoints
+- avoid leaking internal infrastructure details
+- include enough information for client-side handling
+
+Recommended categories:
+- validation errors
+- authentication errors
+- authorization errors
+- not found errors
+- conflict errors
+- internal errors
+
+## Logging
+
+Minimum logging for MVP:
+- incoming request logs
+- processing state changes
+- integration failures
+- unexpected errors
+
+Future improvements may include:
+- structured logging
+- correlation IDs
+- metrics and tracing
 
 ## Testing strategy
-The architecture is designed for testability.
 
-Preferred testing levels:
-- use case unit tests with mocked ports
-- repository/integration tests for adapters
-- end-to-end API tests for critical flows
+The project should remain easy to test.
 
-At minimum:
-- all meaningful business logic should be testable without requiring the full application runtime
+Preferred levels:
+- use case unit tests
+- repository integration tests
+- handler tests for key API flows
 
-## Evolution path
-The current architecture is intentionally MVP-friendly.
+At minimum, changed code should be followed by:
+- relevant package tests
+- preferably `go test ./...`
 
-Likely future evolution:
-- stronger RBAC model
-- richer document lifecycle states
-- dedicated analysis service boundaries
-- more formal API contracts
-- better observability
-- mobile/web-specific optimization layers
-- event-driven notification subsystem
-- separate core and analysis databases
+## Why no NATS in MVP
 
-## Non-goals at the current stage
-The architecture does not currently optimize for:
-- full enterprise-scale microservice fragmentation
-- complex workflow engines
-- heavy CQRS/event sourcing
-- premature infrastructure complexity
+NATS is intentionally excluded from the MVP.
 
-The priority is to create a coherent, extensible baseline that can be implemented incrementally.
+Reasons:
+- reduce infrastructure complexity
+- keep async flow easier to debug
+- move faster on core product validation
+- avoid premature event-driven abstractions
+
+NATS may be introduced later when:
+- processing load increases
+- multiple workers are needed
+- notification fan-out becomes important
+- more subsystems need asynchronous decoupling
+
+## Why no web frontend in MVP
+
+The current MVP is mobile-first.
+
+Reasons:
+- reduce product surface area
+- validate the API with the main intended client type
+- speed up delivery
+- keep backend contracts focused
+
+A web frontend may be introduced later if needed.
+
+## Future evolution
+
+Possible next steps after MVP:
+- introduce NATS
+- split analysis into a dedicated service
+- add web frontend
+- add SSE or WebSocket support where justified
+- improve RBAC and permissions
+- separate core and analysis persistence
+- add stronger observability
+
+## Summary
+
+The current architecture is intentionally simple:
+
+- Go backend
+- REST API
+- PostgreSQL
+- MinIO / S3-compatible storage
+- internal async processing without message broker
+- mobile-only clients for MVP
+- ngrok for local mobile testing
+
+The architecture is designed to support fast iteration now and cleaner expansion later.

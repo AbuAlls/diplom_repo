@@ -8,7 +8,7 @@ The codebase is expected to evolve quickly. At the current stage, changing any c
 Before making any changes, read the following files in this exact order:
 
 1. `Specification.md`
-2. `docs/docsapp_api_v0_v1yaml`
+2. `docs/docsapp_api_v0_v1.yaml`
 3. `docs/domain-model.md`
 
 Do not use `README_DEV.md` as a source of truth for implementation decisions.
@@ -18,7 +18,7 @@ Do not use `README_DEV.md` as a source of truth for implementation decisions.
 If documents conflict, use this priority:
 
 1. `Specification.md`
-2. `docs/docsapp_api_v0_v1yaml`
+2. `docs/docsapp_api_v0_v1.yaml`
 3. `docs/domain-model.md`
 4. existing code
 
