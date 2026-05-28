@@ -2,8 +2,7 @@ package usecase
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -14,56 +13,225 @@ import (
 	"diplom.com/m/internal/ports"
 )
 
+const (
+	docStatusProcessing    = "processing"
+	docStatusPendingReview = "pending_review"
+	docStatusConfirmed     = "confirmed"
+	docStatusFailed        = "failed"
+)
+
 type DocumentService struct {
-	Docs   ports.DocumentRepo
-	Jobs   ports.JobRepo
-	Store  ports.ObjectStore
-	Broker ports.Broker
+	Docs       ports.DocumentRepo
+	Folders    ports.FolderRepo
+	Items      ports.PlanItemRepo
+	Goals      ports.GoalRepo
+	Plans      ports.PlanRepo
+	Store      ports.FileStore
+	Extracted  ports.ExtractedDataRepo
+	Recognizer ports.Recognizer
 }
 
-func (s *DocumentService) Upload(ctx context.Context, ownerID, filename, mime string, r io.Reader, size int64) (docID, jobID string, err error) {
-	safeName := sanitizeFilename(filename)
-	h := sha256.New()
-	tee := io.TeeReader(r, h)
-	key := fmt.Sprintf("%s/%s_%s", ownerID, time.Now().UTC().Format("20060102T150405Z"), safeName)
-
-	if err := s.Store.Put(ctx, key, tee, size, mime); err != nil {
-		return "", "", err
-	}
-	checksum := hex.EncodeToString(h.Sum(nil))
-
-	docID, err = s.Docs.Create(ctx, ownerID, safeName, mime, checksum, key, size)
-	if err != nil {
-		return "", "", err
-	}
-	jobID, err = s.Jobs.Create(ctx, ownerID, docID, 1)
-	if err != nil {
-		return "", "", err
-	}
-
-	evt := domain.Event{
-		EventID:    domain.NewEventID(),
-		OccurredAt: time.Now().UTC(),
-		Type:       "jobs.created",
-		UserID:     ownerID,
-		DocumentID: docID,
-		JobID:      jobID,
-		Data: map[string]any{
-			"pipeline_version": 1,
-		},
-	}
-	if err := s.Broker.Publish(ctx, "jobs.created", evt); err != nil {
-		return "", "", err
-	}
-	_ = s.Broker.PublishUI(ctx, "ui.jobs."+jobID, evt)
-	return docID, jobID, nil
+// DocumentView is the merged read model: the core document plus its analysis-side
+// extracted data (nil until recognition has run).
+type DocumentView struct {
+	Doc       domain.Document
+	Extracted *domain.ExtractedData
 }
 
-func sanitizeFilename(name string) string {
-	name = filepath.Base(name)
-	name = strings.ReplaceAll(name, "..", "")
-	if name == "." || name == "" || name == "/" {
-		return "file.bin"
+// DocumentUpdate carries an edit of recognized fields. SetCategory distinguishes
+// "set recognized_category_id (possibly to null)" from "field absent".
+type DocumentUpdate struct {
+	SetCategory          bool
+	RecognizedCategoryID *int64
+	Fields               ports.DocumentPatch
+}
+
+func (s *DocumentService) Upload(ctx context.Context, ownerID, planItemID int64, fileName, mimeType string, file io.Reader) (DocumentView, error) {
+	if _, err := requireItemByID(ctx, s.Items, s.Goals, s.Plans, planItemID, ownerID); err != nil {
+		return DocumentView{}, err
+	}
+	fileName = strings.TrimSpace(fileName)
+	if fileName == "" {
+		return DocumentView{}, ErrValidation
+	}
+	if mimeType == "" {
+		mimeType = "application/octet-stream"
+	}
+
+	folderID, err := s.Folders.FindOrCreateItemFolder(ctx, planItemID, ownerID)
+	if err != nil {
+		return DocumentView{}, err
+	}
+
+	key := fmt.Sprintf("plan_item_%d/%d_%s", planItemID, time.Now().UnixNano(), sanitizeFileName(fileName))
+	size, err := s.Store.Save(ctx, key, file)
+	if err != nil {
+		return DocumentView{}, err
+	}
+
+	doc, err := s.Docs.Create(ctx, ports.DocumentCreate{
+		PlanItemID: planItemID,
+		FolderID:   folderID,
+		UploadedBy: ownerID,
+		Title:      fileName,
+		Status:     docStatusProcessing,
+		FileName:   fileName,
+		FilePath:   key,
+		MimeType:   mimeType,
+		FileSize:   &size,
+	})
+	if err != nil {
+		return DocumentView{}, err
+	}
+
+	res, err := s.Recognizer.Recognize(ctx, ports.RecognizeInput{DocumentID: doc.ID, FileName: fileName, MimeType: mimeType})
+	if err != nil {
+		_, _ = s.Docs.UpdateStatus(ctx, doc.ID, docStatusFailed)
+		return DocumentView{}, err
+	}
+
+	now := time.Now()
+	modelVersion := res.ModelVersion
+	extracted, err := s.Extracted.Create(ctx, ports.ExtractedDataCreate{
+		DocumentID:           doc.ID,
+		RecognizedText:       res.RecognizedText,
+		StructuredJSON:       res.StructuredJSON,
+		RecognizedCategoryID: res.RecognizedCategoryID,
+		ConfidenceScore:      res.ConfidenceScore,
+		ProcessingStatus:     "processed",
+		ProcessedAt:          &now,
+		ModelVersion:         &modelVersion,
+	})
+	if err != nil {
+		return DocumentView{}, err
+	}
+
+	if _, err := s.Docs.UpdateFields(ctx, doc.ID, ports.DocumentPatch{
+		DocumentDate:     res.DocumentDate,
+		ExternalNumber:   res.ExternalNumber,
+		OrganizationName: res.OrganizationName,
+		INN:              res.INN,
+		Deadlines:        res.Deadlines,
+		PersonalData:     res.PersonalData,
+		OrganizationData: res.OrganizationData,
+		Prices:           res.Prices,
+		Quantities:       res.Quantities,
+		ProductNames:     res.ProductNames,
+		ContractNumbers:  res.ContractNumbers,
+	}); err != nil {
+		return DocumentView{}, err
+	}
+	doc, err = s.Docs.UpdateStatus(ctx, doc.ID, docStatusPendingReview)
+	if err != nil {
+		return DocumentView{}, err
+	}
+	return DocumentView{Doc: doc, Extracted: &extracted}, nil
+}
+
+func (s *DocumentService) List(ctx context.Context, ownerID int64, planItemID *int64, page, size int) ([]DocumentView, int, error) {
+	if planItemID != nil {
+		if _, err := requireItemByID(ctx, s.Items, s.Goals, s.Plans, *planItemID, ownerID); err != nil {
+			return nil, 0, err
+		}
+	}
+	offset, limit := offsetLimit(page, size)
+	docs, total, err := s.Docs.ListByOwner(ctx, ownerID, planItemID, offset, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	views, err := s.attachExtracted(ctx, docs)
+	if err != nil {
+		return nil, 0, err
+	}
+	return views, total, nil
+}
+
+func (s *DocumentService) Get(ctx context.Context, ownerID, docID int64) (DocumentView, error) {
+	doc, err := s.Docs.GetByID(ctx, docID)
+	if err != nil {
+		return DocumentView{}, err
+	}
+	if _, err := requireItemByID(ctx, s.Items, s.Goals, s.Plans, doc.PlanItemID, ownerID); err != nil {
+		return DocumentView{}, err
+	}
+	return s.viewOf(ctx, doc)
+}
+
+func (s *DocumentService) Patch(ctx context.Context, ownerID, docID int64, upd DocumentUpdate) (DocumentView, error) {
+	doc, err := s.Docs.GetByID(ctx, docID)
+	if err != nil {
+		return DocumentView{}, err
+	}
+	if _, err := requireItemByID(ctx, s.Items, s.Goals, s.Plans, doc.PlanItemID, ownerID); err != nil {
+		return DocumentView{}, err
+	}
+	if upd.SetCategory {
+		if err := s.Extracted.UpdateCategory(ctx, docID, upd.RecognizedCategoryID); err != nil {
+			return DocumentView{}, err
+		}
+	}
+	doc, err = s.Docs.UpdateFields(ctx, docID, upd.Fields)
+	if err != nil {
+		return DocumentView{}, err
+	}
+	return s.viewOf(ctx, doc)
+}
+
+func (s *DocumentService) Confirm(ctx context.Context, ownerID, docID int64) (DocumentView, error) {
+	doc, err := s.Docs.GetByID(ctx, docID)
+	if err != nil {
+		return DocumentView{}, err
+	}
+	if _, err := requireItemByID(ctx, s.Items, s.Goals, s.Plans, doc.PlanItemID, ownerID); err != nil {
+		return DocumentView{}, err
+	}
+	if doc.Status != docStatusPendingReview {
+		return DocumentView{}, ErrConflict
+	}
+	doc, err = s.Docs.UpdateStatus(ctx, docID, docStatusConfirmed)
+	if err != nil {
+		return DocumentView{}, err
+	}
+	return s.viewOf(ctx, doc)
+}
+
+func (s *DocumentService) viewOf(ctx context.Context, doc domain.Document) (DocumentView, error) {
+	e, err := s.Extracted.GetByDocumentID(ctx, doc.ID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return DocumentView{Doc: doc}, nil
+		}
+		return DocumentView{}, err
+	}
+	return DocumentView{Doc: doc, Extracted: &e}, nil
+}
+
+func (s *DocumentService) attachExtracted(ctx context.Context, docs []domain.Document) ([]DocumentView, error) {
+	ids := make([]int64, len(docs))
+	for i, d := range docs {
+		ids[i] = d.ID
+	}
+	byDoc, err := s.Extracted.ListByDocumentIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]DocumentView, len(docs))
+	for i, d := range docs {
+		v := DocumentView{Doc: d}
+		if e, ok := byDoc[d.ID]; ok {
+			ec := e
+			v.Extracted = &ec
+		}
+		out[i] = v
+	}
+	return out, nil
+}
+
+func sanitizeFileName(name string) string {
+	name = filepath.Base(strings.ReplaceAll(name, "\\", "/"))
+	name = strings.ReplaceAll(name, " ", "_")
+	if name == "" || name == "." || name == "/" {
+		return "file"
 	}
 	return name
 }

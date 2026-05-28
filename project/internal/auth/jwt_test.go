@@ -20,13 +20,17 @@ func TestIssueAndValidateAccessToken(t *testing.T) {
 	}
 }
 
-func TestRefreshCookieRoundtrip(t *testing.T) {
-	v := BuildRefreshCookieValue("sid", "token")
-	sid, token, err := ParseRefreshCookie(v)
+func TestIssueRefreshToken(t *testing.T) {
+	m := TokenManager{Secret: []byte("secret"), Issuer: "docsapp"}
+	tok, err := m.IssueRefreshToken("u1", time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sid != "sid" || token != "token" {
-		t.Fatalf("unexpected parse: %s %s", sid, token)
+	claims, err := m.ValidateAccessToken(tok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claims.Sub != "u1" {
+		t.Fatalf("unexpected sub: %s", claims.Sub)
 	}
 }

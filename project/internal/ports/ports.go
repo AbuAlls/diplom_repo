@@ -2,110 +2,168 @@ package ports
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"io"
 	"time"
 
 	"diplom.com/m/internal/domain"
 )
 
-type DocumentRepo interface {
-	Create(ctx context.Context, ownerID, filename, mime, checksum, objectKey string, size int64) (docID string, err error)
-	Get(ctx context.Context, ownerID, docID string) (DocumentDTO, error)
-	List(ctx context.Context, ownerID string, limit int, cursor string, status *domain.DocStatus) ([]DocumentDTO, string, error)
-	UpdateStatus(ctx context.Context, docID string, status domain.DocStatus) error
-}
+// ErrNotFound is returned by repositories when a requested row does not exist.
+var ErrNotFound = errors.New("not found")
 
-type JobRepo interface {
-	Create(ctx context.Context, ownerID, docID string, pipelineVersion int) (jobID string, err error)
-	GetByOwner(ctx context.Context, ownerID, jobID string) (JobDTO, error)
-	GetByID(ctx context.Context, jobID string) (JobDTO, error)
-	UpsertStep(ctx context.Context, jobID string, step domain.StepName) error
-	MarkStepRunning(ctx context.Context, jobID string, step domain.StepName) (attempt int, err error)
-	MarkStepCompleted(ctx context.Context, jobID string, step domain.StepName) error
-	MarkStepFailed(ctx context.Context, jobID string, step domain.StepName, errMsg string) (attempt int, err error)
-	MarkJobRunning(ctx context.Context, jobID string) error
-	MarkJobCompleted(ctx context.Context, jobID string) error
-	MarkJobFailed(ctx context.Context, jobID string) error
-	ListCreatedJobs(ctx context.Context, limit int) ([]JobDTO, error)
-}
-
-type AnalysisRepo interface {
-	SaveExtraction(ctx context.Context, ownerID, docID string, fields map[string]AnalysisField) error
-	GetExtraction(ctx context.Context, ownerID, docID string) (map[string]AnalysisField, error)
+type UserDTO struct {
+	ID           int64
+	Email        string
+	FullName     string
+	PasswordHash string
 }
 
 type UserRepo interface {
-	Create(ctx context.Context, email, passwordHash string) (userID string, err error)
+	Create(ctx context.Context, email, fullName, passwordHash string) (int64, error)
 	GetByEmail(ctx context.Context, email string) (UserDTO, error)
-	GetByID(ctx context.Context, userID string) (UserDTO, error)
+	GetByID(ctx context.Context, id int64) (UserDTO, error)
 }
 
-type SessionRepo interface {
-	Create(ctx context.Context, userID, refreshHash string, expiresAt time.Time, userAgent, ip string) (sessionID string, err error)
-	GetValid(ctx context.Context, sessionID string) (RefreshSessionDTO, error)
-	Revoke(ctx context.Context, sessionID string) error
+type PlanRepo interface {
+	Create(ctx context.Context, ownerID int64, name string, description *string, status string) (domain.Plan, error)
+	GetByID(ctx context.Context, id int64) (domain.Plan, error)
+	ListByOwner(ctx context.Context, ownerID int64, offset, limit int) (items []domain.Plan, total int, err error)
 }
 
-type ObjectStore interface {
-	Put(ctx context.Context, key string, r io.Reader, size int64, contentType string) error
-	Get(ctx context.Context, key string) (io.ReadCloser, error)
-	PresignGetURL(ctx context.Context, key string, ttl time.Duration) (string, error)
+type GoalRepo interface {
+	Create(ctx context.Context, planID int64, name string, description *string, sortOrder int) (domain.Goal, error)
+	GetByID(ctx context.Context, id int64) (domain.Goal, error)
+	ListByPlan(ctx context.Context, planID int64, offset, limit int) (items []domain.Goal, total int, err error)
 }
 
-type Broker interface {
-	Publish(ctx context.Context, subject string, evt domain.Event) error
-	PublishUI(ctx context.Context, subject string, evt domain.Event) error
-	Subscribe(ctx context.Context, subject, durable, queue string, handler func(domain.Event) error) error
+type PlanItemInput struct {
+	Name         string
+	Description  *string
+	SortOrder    int
+	ItemType     string
+	Status       string
+	TargetValue  *float64
+	CurrentValue *float64
+	Unit         *string
 }
 
-type OCRClient interface {
-	ExtractText(ctx context.Context, doc io.Reader) (string, error)
+type PlanItemPatch struct {
+	Name         *string
+	Description  *string
+	SortOrder    *int
+	ItemType     *string
+	Status       *string
+	TargetValue  *float64
+	CurrentValue *float64
+	Unit         *string
 }
 
-type LLMClient interface {
-	Analyze(ctx context.Context, text string) (map[string]AnalysisField, error)
+type PlanItemRepo interface {
+	Create(ctx context.Context, goalID int64, in PlanItemInput) (domain.PlanItem, error)
+	GetByID(ctx context.Context, id int64) (domain.PlanItem, error)
+	ListByGoal(ctx context.Context, goalID int64, offset, limit int) (items []domain.PlanItem, total int, err error)
+	Update(ctx context.Context, id int64, patch PlanItemPatch) (domain.PlanItem, error)
 }
 
-type AnalysisField struct {
-	Value      string         `json:"value"`
-	Confidence float32        `json:"confidence"`
-	Meta       map[string]any `json:"meta,omitempty"`
+// FolderRepo resolves the system folder that holds a plan item's documents,
+// creating it on first use (documents.folder_id is NOT NULL).
+type FolderRepo interface {
+	FindOrCreateItemFolder(ctx context.Context, planItemID, ownerID int64) (int64, error)
 }
 
-type DocumentDTO struct {
-	ID        string
-	OwnerID   string
-	Filename  string
-	Mime      string
-	Size      int64
-	Checksum  string
-	ObjectKey string
-	Status    domain.DocStatus
-	CreatedAt time.Time
-	UpdatedAt time.Time
-}
-
-type JobDTO struct {
-	ID         string
-	DocumentID string
-	OwnerID    string
+type DocumentCreate struct {
+	PlanItemID int64
+	FolderID   int64
+	UploadedBy int64
+	Title      string
 	Status     string
-	CreatedAt  time.Time
+	FileName   string
+	FilePath   string
+	MimeType   string
+	FileSize   *int64
 }
 
-type UserDTO struct {
-	ID           string
-	Email        string
-	PasswordHash string
-	CreatedAt    time.Time
+// DocumentPatch carries the manually-editable core `documents` columns. Each nil
+// pointer leaves the column unchanged; slices are applied when non-nil.
+type DocumentPatch struct {
+	DocumentDate     *time.Time
+	ExternalNumber   *string
+	OrganizationName *string
+	INN              *string
+	Description      *string
+	Deadlines        []time.Time
+	PersonalData     []string
+	OrganizationData []string
+	Prices           []string
+	Quantities       []int32
+	ProductNames     []string
+	ContractNumbers  []string
 }
 
-type RefreshSessionDTO struct {
-	ID          string
-	UserID      string
-	RefreshHash string
-	ExpiresAt   time.Time
-	RevokedAt   *time.Time
-	UserAgent   string
-	IP          string
+type DocumentRepo interface {
+	Create(ctx context.Context, in DocumentCreate) (domain.Document, error)
+	GetByID(ctx context.Context, id int64) (domain.Document, error)
+	ListByOwner(ctx context.Context, ownerID int64, planItemID *int64, offset, limit int) (items []domain.Document, total int, err error)
+	UpdateFields(ctx context.Context, id int64, patch DocumentPatch) (domain.Document, error)
+	UpdateStatus(ctx context.Context, id int64, status string) (domain.Document, error)
+	CountByPlanItem(ctx context.Context, planItemID int64) (int, error)
+	LatestDocIDByPlanItem(ctx context.Context, planItemID int64) (*int64, error)
+}
+
+type ExtractedDataCreate struct {
+	DocumentID           int64
+	RecognizedText       string
+	StructuredJSON       json.RawMessage
+	RecognizedCategoryID *int64
+	ConfidenceScore      *float64
+	ProcessingStatus     string
+	ProcessedAt          *time.Time
+	ModelVersion         *string
+}
+
+type ExtractedDataRepo interface {
+	Create(ctx context.Context, in ExtractedDataCreate) (domain.ExtractedData, error)
+	GetByDocumentID(ctx context.Context, documentID int64) (domain.ExtractedData, error)
+	ListByDocumentIDs(ctx context.Context, documentIDs []int64) (map[int64]domain.ExtractedData, error)
+	UpdateCategory(ctx context.Context, documentID int64, categoryID *int64) error
+}
+
+// FileStore persists uploaded bytes and returns the number of bytes written.
+type FileStore interface {
+	Save(ctx context.Context, key string, r io.Reader) (size int64, err error)
+}
+
+type RecognizeInput struct {
+	DocumentID int64
+	FileName   string
+	MimeType   string
+}
+
+// RecognizeResult is the output of the (mock) recognition service: the analysis
+// payload plus the structured document fields it inferred.
+type RecognizeResult struct {
+	RecognizedText       string
+	StructuredJSON       json.RawMessage
+	RecognizedCategoryID *int64
+	ConfidenceScore      *float64
+	ModelVersion         string
+
+	DocumentDate     *time.Time
+	ExternalNumber   *string
+	OrganizationName *string
+	INN              *string
+	Deadlines        []time.Time
+	PersonalData     []string
+	OrganizationData []string
+	Prices           []string
+	Quantities       []int32
+	ProductNames     []string
+	ContractNumbers  []string
+}
+
+// Recognizer is the OCR/LLM analysis port. The v0 implementation is a deterministic mock.
+type Recognizer interface {
+	Recognize(ctx context.Context, in RecognizeInput) (RecognizeResult, error)
 }

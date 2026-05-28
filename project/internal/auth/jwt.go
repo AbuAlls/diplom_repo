@@ -2,13 +2,10 @@ package auth
 
 import (
 	"crypto/hmac"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 )
@@ -34,6 +31,13 @@ func (m TokenManager) IssueAccessToken(userID string, ttl time.Duration) (string
 		Iss: m.Issuer,
 	}
 	return m.sign(claims)
+}
+
+// IssueRefreshToken issues a stateless, longer-lived token. v0 has no refresh
+// endpoint, so it is not validated server-side yet; it satisfies the documented
+// TokenResponse shape and is ready for a future /auth/refresh flow.
+func (m TokenManager) IssueRefreshToken(userID string, ttl time.Duration) (string, error) {
+	return m.IssueAccessToken(userID, ttl)
 }
 
 func (m TokenManager) ValidateAccessToken(token string) (Claims, error) {
@@ -89,32 +93,4 @@ func (m TokenManager) hmac(input string) string {
 	h := hmac.New(sha256.New, m.Secret)
 	_, _ = h.Write([]byte(input))
 	return base64.RawURLEncoding.EncodeToString(h.Sum(nil))
-}
-
-func NewRefreshToken() (plain string, hash string, err error) {
-	b := make([]byte, 32)
-	if _, err = rand.Read(b); err != nil {
-		return "", "", err
-	}
-	plain = base64.RawURLEncoding.EncodeToString(b)
-	sum := sha256.Sum256([]byte(plain))
-	hash = hex.EncodeToString(sum[:])
-	return plain, hash, nil
-}
-
-func HashRefreshToken(plain string) string {
-	sum := sha256.Sum256([]byte(plain))
-	return hex.EncodeToString(sum[:])
-}
-
-func ParseRefreshCookie(raw string) (sessionID string, token string, err error) {
-	parts := strings.Split(raw, ".")
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", errors.New("invalid refresh token")
-	}
-	return parts[0], parts[1], nil
-}
-
-func BuildRefreshCookieValue(sessionID, token string) string {
-	return fmt.Sprintf("%s.%s", sessionID, token)
 }

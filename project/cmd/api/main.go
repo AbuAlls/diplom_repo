@@ -9,10 +9,10 @@ import (
 	"time"
 
 	httpapi "diplom.com/m/internal/adapters/httpapi"
-	"diplom.com/m/internal/adapters/nats"
 	"diplom.com/m/internal/adapters/pganalysis"
 	"diplom.com/m/internal/adapters/pgcore"
-	"diplom.com/m/internal/adapters/s3"
+	"diplom.com/m/internal/adapters/recognition"
+	"diplom.com/m/internal/adapters/storage"
 	"diplom.com/m/internal/auth"
 	"diplom.com/m/internal/config"
 	"diplom.com/m/internal/usecase"
@@ -29,36 +29,50 @@ func main() {
 	}
 	defer coreStore.Close()
 
-	analysisRepo, err := pganalysis.New(ctx, cfg.AnalysisDBDSN)
+	analysisStore, err := pganalysis.NewStore(ctx, cfg.AnalysisDBDSN)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer analysisRepo.Close()
+	defer analysisStore.Close()
 
-	docRepo := pgcore.NewDocumentRepo(coreStore)
-	jobRepo := pgcore.NewJobRepo(coreStore)
 	userRepo := pgcore.NewUserRepo(coreStore)
-	sessionRepo := pgcore.NewSessionRepo(coreStore)
-	broker := nats.NewInMemoryBroker()
-	objStore := s3.NewLocalStore(cfg.StorageRootDir, cfg.StorageDownloadRoute)
+	planRepo := pgcore.NewPlanRepo(coreStore)
+	goalRepo := pgcore.NewGoalRepo(coreStore)
+	itemRepo := pgcore.NewPlanItemRepo(coreStore)
+	folderRepo := pgcore.NewFolderRepo(coreStore)
+	docRepo := pgcore.NewDocumentRepo(coreStore)
+	extractedRepo := pganalysis.NewExtractedDataRepo(analysisStore)
+	fileStore := storage.NewLocalStore(cfg.StorageRootDir)
+	recognizer := recognition.New()
 
-	docsSvc := &usecase.DocumentService{Docs: docRepo, Jobs: jobRepo, Store: objStore, Broker: broker}
 	authSvc := &usecase.AuthService{
 		Users:      userRepo,
-		Sessions:   sessionRepo,
 		Tokens:     auth.TokenManager{Secret: []byte(cfg.JWTSecret), Issuer: cfg.JWTIssuer},
 		AccessTTL:  cfg.AccessTokenTTL,
 		RefreshTTL: cfg.RefreshTokenTTL,
 	}
+	planSvc := &usecase.PlanService{Plans: planRepo}
+	goalSvc := &usecase.GoalService{Goals: goalRepo, Plans: planRepo}
+	itemSvc := &usecase.PlanItemService{Items: itemRepo, Goals: goalRepo, Plans: planRepo}
+	docSvc := &usecase.DocumentService{
+		Docs:       docRepo,
+		Folders:    folderRepo,
+		Items:      itemRepo,
+		Goals:      goalRepo,
+		Plans:      planRepo,
+		Store:      fileStore,
+		Extracted:  extractedRepo,
+		Recognizer: recognizer,
+	}
+	analyticsSvc := &usecase.AnalyticsService{Items: itemRepo, Goals: goalRepo, Plans: planRepo, Docs: docRepo}
 
 	api := &httpapi.API{
-		Auth:     authSvc,
-		Docs:     docsSvc,
-		DocRepo:  docRepo,
-		JobRepo:  jobRepo,
-		Analysis: analysisRepo,
-		Store:    objStore,
-		SSE:      &httpapi.SSEHandler{Broker: broker},
+		Auth:      authSvc,
+		Plans:     planSvc,
+		Goals:     goalSvc,
+		Items:     itemSvc,
+		Docs:      docSvc,
+		Analytics: analyticsSvc,
 	}
 
 	srv := &http.Server{
