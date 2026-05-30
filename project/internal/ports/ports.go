@@ -131,8 +131,25 @@ type ExtractedDataRepo interface {
 }
 
 // FileStore persists uploaded bytes and returns the number of bytes written.
+type FileStatus struct {
+	Key           string
+	Exists        bool
+	StatusCode    int
+	ContentLength *int64
+	ContentType   string
+	ETag          string
+	LastModified  *time.Time
+}
+
+type FileObject struct {
+	Status FileStatus
+	Body   io.ReadCloser
+}
+
 type FileStore interface {
 	Save(ctx context.Context, key string, r io.Reader) (size int64, err error)
+	Stat(ctx context.Context, key string) (FileStatus, error)
+	Open(ctx context.Context, key string) (FileObject, error)
 }
 
 type RecognizeInput struct {

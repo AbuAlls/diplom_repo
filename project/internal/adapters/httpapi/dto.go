@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"net/http"
 	"time"
 
 	"diplom.com/m/internal/domain"
@@ -88,6 +89,7 @@ func toGoal(g domain.Goal) goalResponse {
 type documentResponse struct {
 	ID                   int64           `json:"id"`
 	PlanItemID           int64           `json:"plan_item_id"`
+	Title                string          `json:"title"`
 	RecognizedText       string          `json:"recognized_text"`
 	StructuredJSON       json.RawMessage `json:"structured_json"`
 	RecognizedCategoryID *int64          `json:"recognized_category_id"`
@@ -98,6 +100,9 @@ type documentResponse struct {
 	OrganizationName     *string         `json:"organization_name"`
 	INN                  *string         `json:"inn"`
 	Description          *string         `json:"description"`
+	FileName             string          `json:"file_name"`
+	FilePath             string          `json:"file_path"`
+	MimeType             string          `json:"mime_type"`
 	FileSize             *int64          `json:"file_size"`
 	Deadlines            []string        `json:"deadlines"`
 	PersonalData         []string        `json:"personal_data"`
@@ -111,16 +116,36 @@ type documentResponse struct {
 	UpdatedAt            time.Time       `json:"updated_at"`
 }
 
+type documentStorageResponse struct {
+	DocumentID       int64      `json:"document_id"`
+	FileName         string     `json:"file_name"`
+	FilePath         string     `json:"file_path"`
+	MimeType         string     `json:"mime_type"`
+	DbFileSize       *int64     `json:"db_file_size"`
+	ObjectExists     bool       `json:"object_exists"`
+	ObjectStatus     string     `json:"object_status"`
+	ObjectStatusCode int        `json:"object_status_code"`
+	ObjectSize       *int64     `json:"object_size"`
+	ObjectType       string     `json:"object_type,omitempty"`
+	ObjectETag       string     `json:"object_etag,omitempty"`
+	LastModified     *time.Time `json:"last_modified,omitempty"`
+	CheckedAt        time.Time  `json:"checked_at"`
+}
+
 func toDocument(v usecase.DocumentView) documentResponse {
 	d := v.Doc
 	resp := documentResponse{
 		ID:               d.ID,
 		PlanItemID:       d.PlanItemID,
+		Title:            d.Title,
 		StructuredJSON:   json.RawMessage("{}"),
 		ExternalNumber:   d.ExternalNumber,
 		OrganizationName: d.OrganizationName,
 		INN:              d.INN,
 		Description:      d.Description,
+		FileName:         d.FileName,
+		FilePath:         d.FilePath,
+		MimeType:         d.MimeType,
 		FileSize:         d.FileSize,
 		PersonalData:     d.PersonalData,
 		OrganizationData: d.OrganizationData,
@@ -149,6 +174,30 @@ func toDocument(v usecase.DocumentView) documentResponse {
 		resp.ModelVersion = e.ModelVersion
 	}
 	return resp
+}
+
+func toDocumentStorage(s usecase.DocumentStorageStatus) documentStorageResponse {
+	objectStatus := "missing"
+	if s.Object.Exists {
+		objectStatus = "available"
+	} else if s.Object.StatusCode > 0 && s.Object.StatusCode != http.StatusNotFound {
+		objectStatus = "unavailable"
+	}
+	return documentStorageResponse{
+		DocumentID:       s.Doc.ID,
+		FileName:         s.Doc.FileName,
+		FilePath:         s.Doc.FilePath,
+		MimeType:         s.Doc.MimeType,
+		DbFileSize:       s.Doc.FileSize,
+		ObjectExists:     s.Object.Exists,
+		ObjectStatus:     objectStatus,
+		ObjectStatusCode: s.Object.StatusCode,
+		ObjectSize:       s.Object.ContentLength,
+		ObjectType:       s.Object.ContentType,
+		ObjectETag:       s.Object.ETag,
+		LastModified:     s.Object.LastModified,
+		CheckedAt:        s.CheckedAt,
+	}
 }
 
 type itemAnalyticsResponse struct {

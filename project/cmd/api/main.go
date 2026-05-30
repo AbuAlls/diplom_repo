@@ -42,7 +42,10 @@ func main() {
 	folderRepo := pgcore.NewFolderRepo(coreStore)
 	docRepo := pgcore.NewDocumentRepo(coreStore)
 	extractedRepo := pganalysis.NewExtractedDataRepo(analysisStore)
-	fileStore := storage.NewLocalStore(cfg.StorageRootDir)
+	fileStore, err := storage.NewS3Store(cfg.S3Endpoint, cfg.S3Bucket, cfg.S3Region, cfg.S3AccessKey, cfg.S3SecretKey)
+	if err != nil {
+		log.Fatal(err)
+	}
 	recognizer := recognition.New()
 
 	authSvc := &usecase.AuthService{

@@ -38,7 +38,9 @@ type memDocumentRepo struct {
 	nextID int64
 }
 
-func newMemDocumentRepo() *memDocumentRepo { return &memDocumentRepo{byID: map[int64]domain.Document{}} }
+func newMemDocumentRepo() *memDocumentRepo {
+	return &memDocumentRepo{byID: map[int64]domain.Document{}}
+}
 
 func (m *memDocumentRepo) Create(_ context.Context, in ports.DocumentCreate) (domain.Document, error) {
 	m.nextID++
@@ -210,18 +212,53 @@ func (m *memExtractedRepo) UpdateCategory(_ context.Context, documentID int64, c
 }
 
 type memFileStore struct {
-	saved map[string]int64
+	saved map[string][]byte
 }
 
-func newMemFileStore() *memFileStore { return &memFileStore{saved: map[string]int64{}} }
+func newMemFileStore() *memFileStore { return &memFileStore{saved: map[string][]byte{}} }
 
 func (m *memFileStore) Save(_ context.Context, key string, r io.Reader) (int64, error) {
-	n, err := io.Copy(io.Discard, r)
+	b, err := io.ReadAll(r)
 	if err != nil {
 		return 0, err
 	}
-	m.saved[key] = n
-	return n, nil
+	m.saved[key] = b
+	return int64(len(b)), nil
+}
+
+func (m *memFileStore) Stat(_ context.Context, key string) (ports.FileStatus, error) {
+	b, ok := m.saved[key]
+	if !ok {
+		return ports.FileStatus{Key: key, Exists: false, StatusCode: http.StatusNotFound}, nil
+	}
+	n := int64(len(b))
+	return ports.FileStatus{
+		Key:           key,
+		Exists:        true,
+		StatusCode:    http.StatusOK,
+		ContentLength: &n,
+		ContentType:   "application/octet-stream",
+		ETag:          `"test-etag"`,
+	}, nil
+}
+
+func (m *memFileStore) Open(_ context.Context, key string) (ports.FileObject, error) {
+	b, ok := m.saved[key]
+	if !ok {
+		return ports.FileObject{}, ports.ErrNotFound
+	}
+	n := int64(len(b))
+	return ports.FileObject{
+		Status: ports.FileStatus{
+			Key:           key,
+			Exists:        true,
+			StatusCode:    http.StatusOK,
+			ContentLength: &n,
+			ContentType:   "text/plain",
+			ETag:          `"test-etag"`,
+		},
+		Body: io.NopCloser(bytes.NewReader(b)),
+	}, nil
 }
 
 // --- helpers ---
@@ -282,6 +319,12 @@ func TestDocumentUploadHappyPath(t *testing.T) {
 	if doc.ID == 0 || doc.PlanItemID != 1 {
 		t.Fatalf("unexpected doc: %+v", doc)
 	}
+	if doc.Title != "contract.pdf" || doc.FileName != "contract.pdf" {
+		t.Fatalf("expected file metadata for contract.pdf, got title=%q file_name=%q", doc.Title, doc.FileName)
+	}
+	if doc.FilePath == "" || doc.MimeType == "" {
+		t.Fatalf("expected non-empty file_path and mime_type, got file_path=%q mime_type=%q", doc.FilePath, doc.MimeType)
+	}
 	if doc.Status != "pending_review" {
 		t.Fatalf("expected pending_review, got %q", doc.Status)
 	}
@@ -326,6 +369,34 @@ func TestDocumentListGetPatchConfirmFlow(t *testing.T) {
 	resp.Body.Close()
 	if doc.ID != 1 {
 		t.Fatalf("expected doc id 1, got %d", doc.ID)
+	}
+	if doc.FileName != "doc.pdf" || doc.FilePath == "" {
+		t.Fatalf("expected file metadata, got file_name=%q file_path=%q", doc.FileName, doc.FilePath)
+	}
+
+	// storage status: DB row plus object-store HEAD-style status.
+	resp = do(t, "GET", srv.URL+"/v0/documents/1/storage", token, "")
+	var storage documentStorageResponse
+	json.NewDecoder(resp.Body).Decode(&storage)
+	resp.Body.Close()
+	if storage.DocumentID != 1 || !storage.ObjectExists || storage.ObjectStatusCode != http.StatusOK {
+		t.Fatalf("unexpected storage status: %+v", storage)
+	}
+	if storage.FilePath == "" || storage.ObjectSize == nil || *storage.ObjectSize != int64(len("data")) {
+		t.Fatalf("unexpected storage metadata: %+v", storage)
+	}
+
+	resp = do(t, "GET", srv.URL+"/v0/documents/1/download", token, "")
+	body, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		t.Fatalf("read download body: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK || string(body) != "data" {
+		t.Fatalf("unexpected download: status=%d body=%q", resp.StatusCode, string(body))
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "text/plain" {
+		t.Fatalf("expected text/plain content type, got %q", ct)
 	}
 
 	// patch: core field + analysis category

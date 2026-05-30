@@ -40,6 +40,8 @@ func (a *API) Routes() http.Handler {
 	// them as separate wildcard patterns, so a single dispatcher handles both.
 	mux.Handle("POST /v0/documents/{seg1}/{seg2}", a.authenticated(a.postDocumentAction))
 	mux.Handle("GET /v0/documents", a.authenticated(a.listDocuments))
+	mux.Handle("GET /v0/documents/{id_document}/download", a.authenticated(a.downloadDocument))
+	mux.Handle("GET /v0/documents/{id_document}/storage", a.authenticated(a.getDocumentStorage))
 	mux.Handle("GET /v0/documents/{id_document}", a.authenticated(a.getDocument))
 	mux.Handle("PATCH /v0/documents/{id_document}", a.authenticated(a.patchDocument))
 

@@ -46,6 +46,17 @@ type DocumentUpdate struct {
 	Fields               ports.DocumentPatch
 }
 
+type DocumentStorageStatus struct {
+	Doc       domain.Document
+	Object    ports.FileStatus
+	CheckedAt time.Time
+}
+
+type DocumentDownload struct {
+	Doc    domain.Document
+	Object ports.FileObject
+}
+
 func (s *DocumentService) Upload(ctx context.Context, ownerID, planItemID int64, fileName, mimeType string, file io.Reader) (DocumentView, error) {
 	if _, err := requireItemByID(ctx, s.Items, s.Goals, s.Plans, planItemID, ownerID); err != nil {
 		return DocumentView{}, err
@@ -155,6 +166,40 @@ func (s *DocumentService) Get(ctx context.Context, ownerID, docID int64) (Docume
 		return DocumentView{}, err
 	}
 	return s.viewOf(ctx, doc)
+}
+
+func (s *DocumentService) StorageStatus(ctx context.Context, ownerID, docID int64) (DocumentStorageStatus, error) {
+	doc, err := s.Docs.GetByID(ctx, docID)
+	if err != nil {
+		return DocumentStorageStatus{}, err
+	}
+	if _, err := requireItemByID(ctx, s.Items, s.Goals, s.Plans, doc.PlanItemID, ownerID); err != nil {
+		return DocumentStorageStatus{}, err
+	}
+	status, err := s.Store.Stat(ctx, doc.FilePath)
+	if err != nil {
+		return DocumentStorageStatus{}, err
+	}
+	return DocumentStorageStatus{
+		Doc:       doc,
+		Object:    status,
+		CheckedAt: time.Now(),
+	}, nil
+}
+
+func (s *DocumentService) Download(ctx context.Context, ownerID, docID int64) (DocumentDownload, error) {
+	doc, err := s.Docs.GetByID(ctx, docID)
+	if err != nil {
+		return DocumentDownload{}, err
+	}
+	if _, err := requireItemByID(ctx, s.Items, s.Goals, s.Plans, doc.PlanItemID, ownerID); err != nil {
+		return DocumentDownload{}, err
+	}
+	obj, err := s.Store.Open(ctx, doc.FilePath)
+	if err != nil {
+		return DocumentDownload{}, err
+	}
+	return DocumentDownload{Doc: doc, Object: obj}, nil
 }
 
 func (s *DocumentService) Patch(ctx context.Context, ownerID, docID int64, upd DocumentUpdate) (DocumentView, error) {

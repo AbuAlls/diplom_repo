@@ -2,7 +2,10 @@ package httpapi
 
 import (
 	"encoding/json"
+	"io"
+	"mime"
 	"net/http"
+	"strconv"
 	"time"
 
 	"diplom.com/m/internal/ports"
@@ -41,6 +44,7 @@ func (a *API) postDocumentAction(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) uploadDocument(w http.ResponseWriter, r *http.Request, itemID int64) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes)
 	if err := r.ParseMultipartForm(maxUploadBytes); err != nil {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid multipart form")
 		return
@@ -96,6 +100,49 @@ func (a *API) getDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, toDocument(view))
+}
+
+func (a *API) getDocumentStorage(w http.ResponseWriter, r *http.Request) {
+	docID, ok := pathInt(r, "id_document")
+	if !ok {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid path id")
+		return
+	}
+	status, err := a.Docs.StorageStatus(r.Context(), userID(r), docID)
+	if err != nil {
+		writeUsecaseError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, toDocumentStorage(status))
+}
+
+func (a *API) downloadDocument(w http.ResponseWriter, r *http.Request) {
+	docID, ok := pathInt(r, "id_document")
+	if !ok {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid path id")
+		return
+	}
+	download, err := a.Docs.Download(r.Context(), userID(r), docID)
+	if err != nil {
+		writeUsecaseError(w, err)
+		return
+	}
+	defer download.Object.Body.Close()
+
+	contentType := download.Object.Status.ContentType
+	if contentType == "" {
+		contentType = download.Doc.MimeType
+	}
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": download.Doc.FileName}))
+	if download.Object.Status.ContentLength != nil {
+		w.Header().Set("Content-Length", strconv.FormatInt(*download.Object.Status.ContentLength, 10))
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.Copy(w, download.Object.Body)
 }
 
 func (a *API) patchDocument(w http.ResponseWriter, r *http.Request) {

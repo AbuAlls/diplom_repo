@@ -378,6 +378,56 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /v0/documents/{id_document}/storage:
+    get:
+      tags: [v0 Documents]
+      summary: Check object storage status for a document file
+      operationId: v0GetDocumentStorageStatus
+      parameters:
+        - $ref: '#/components/parameters/IdDocument'
+      responses:
+        '200':
+          description: Document object storage status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentStorageStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v0/documents/{id_document}/download:
+    get:
+      tags: [v0 Documents]
+      summary: Download a document file from object storage for testing
+      description: |
+        Testing helper endpoint. The backend verifies document ownership and streams
+        the stored object from MinIO/S3-compatible storage.
+      operationId: v0DownloadDocumentFile
+      parameters:
+        - $ref: '#/components/parameters/IdDocument'
+      responses:
+        '200':
+          description: Document file stream
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /v0/documents/{id_document}/confirm:
     post:
       tags: [v0 Documents]
@@ -1497,6 +1547,9 @@ components:
           type: integer
           format: int64
           description: Plan item id linked to the document
+        title:
+          type: string
+          description: Human-readable document title, currently initialized from the uploaded file name
         recognized_text:
           type: string
         structured_json:
@@ -1529,6 +1582,15 @@ components:
         description:
           type: string
           nullable: true
+        file_name:
+          type: string
+          description: Original uploaded file name
+        file_path:
+          type: string
+          description: Object storage key/path of the uploaded file
+        mime_type:
+          type: string
+          description: Uploaded file MIME type
         file_size:
           type: integer
           format: int64
@@ -1580,7 +1642,7 @@ components:
         updated_at:
           type: string
           format: date-time
-      required: [id, plan_item_id, recognized_text, structured_json, status, created_at, updated_at]
+      required: [id, plan_item_id, title, recognized_text, structured_json, file_name, file_path, mime_type, status, created_at, updated_at]
 
     DocumentResponseV0:
       allOf:
@@ -1603,6 +1665,63 @@ components:
         meta:
           $ref: '#/components/schemas/PaginationMeta'
       required: [items, meta]
+
+    DocumentStorageStatus:
+      type: object
+      properties:
+        document_id:
+          type: integer
+          format: int64
+        file_name:
+          type: string
+        file_path:
+          type: string
+          description: Object storage key/path of the uploaded file
+        mime_type:
+          type: string
+        db_file_size:
+          type: integer
+          format: int64
+          nullable: true
+          description: File size recorded in PostgreSQL at upload time
+        object_exists:
+          type: boolean
+          description: Whether object storage returned a successful HEAD response
+        object_status:
+          type: string
+          enum: [available, missing, unavailable]
+        object_status_code:
+          type: integer
+          description: HTTP status code returned by object storage HEAD request
+        object_size:
+          type: integer
+          format: int64
+          nullable: true
+          description: Content-Length returned by object storage
+        object_type:
+          type: string
+          nullable: true
+          description: Content-Type returned by object storage
+        object_etag:
+          type: string
+          nullable: true
+          description: ETag returned by object storage
+        last_modified:
+          type: string
+          format: date-time
+          nullable: true
+        checked_at:
+          type: string
+          format: date-time
+      required:
+        - document_id
+        - file_name
+        - file_path
+        - mime_type
+        - object_exists
+        - object_status
+        - object_status_code
+        - checked_at
 
     ItemAnalyticsV0:
       type: object

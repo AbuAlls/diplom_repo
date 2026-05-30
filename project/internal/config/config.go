@@ -10,7 +10,11 @@ type Config struct {
 	HTTPAddr        string
 	CoreDBDSN       string
 	AnalysisDBDSN   string
-	StorageRootDir  string
+	S3Endpoint      string
+	S3Bucket        string
+	S3Region        string
+	S3AccessKey     string
+	S3SecretKey     string
 	JWTSecret       string
 	JWTIssuer       string
 	AccessTokenTTL  time.Duration
@@ -31,7 +35,11 @@ func Load() Config {
 		HTTPAddr:        getenv("HTTP_ADDR", ":8080"),
 		CoreDBDSN:       coreDSN,
 		AnalysisDBDSN:   getenv("ANALYSIS_DB_DSN", coreDSN),
-		StorageRootDir:  getenv("STORAGE_ROOT_DIR", "/tmp/docsapp-storage"),
+		S3Endpoint:      getenv("S3_ENDPOINT", "http://minio:9000"),
+		S3Bucket:        getenv("S3_BUCKET", "docsapp"),
+		S3Region:        getenv("S3_REGION", "us-east-1"),
+		S3AccessKey:     getenv("S3_ACCESS_KEY", "minioadmin"),
+		S3SecretKey:     getenv("S3_SECRET_KEY", "minioadmin"),
 		JWTSecret:       getenv("JWT_SECRET", "dev-only-secret-change-me"),
 		JWTIssuer:       getenv("JWT_ISSUER", "docsapp"),
 		AccessTokenTTL:  getDuration("ACCESS_TOKEN_TTL", 15*time.Minute),
