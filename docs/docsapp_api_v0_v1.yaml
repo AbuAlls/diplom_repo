@@ -453,6 +453,64 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /v0/documents/{id_document}/reject:
+    post:
+      tags: [v0 Documents]
+      summary: Reject parsed document correctness
+      description: |
+        Marks a document as rejected after client review. Confirmed documents
+        cannot be rejected.
+      operationId: v0RejectDocument
+      parameters:
+        - $ref: '#/components/parameters/IdDocument'
+      responses:
+        '200':
+          description: Document rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentResponseV0'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Document already confirmed or in invalid state
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v0/documents/{id_document}/reanalyze:
+    post:
+      tags: [v0 Documents]
+      summary: Retry document recognition from stored file
+      description: |
+        Loads the existing object from MinIO/S3-compatible storage, sends it to
+        the recognizer again, stores the new extracted data, and returns the
+        document in pending_review status. Confirmed documents cannot be
+        reanalyzed.
+      operationId: v0ReanalyzeDocument
+      parameters:
+        - $ref: '#/components/parameters/IdDocument'
+      responses:
+        '200':
+          description: Document reanalyzed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentResponseV0'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Document already confirmed or in invalid state
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /v0/items/{id_item}/analytics:
     get:
       tags: [v0 Analytics]

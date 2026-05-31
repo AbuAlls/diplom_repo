@@ -19,6 +19,7 @@ const (
 	docStatusPendingReview = "pending_review"
 	docStatusConfirmed     = "confirmed"
 	docStatusFailed        = "failed"
+	docStatusRejected      = "rejected"
 )
 
 type DocumentService struct {
@@ -103,12 +104,19 @@ func (s *DocumentService) Upload(ctx context.Context, ownerID, planItemID int64,
 		return DocumentView{}, err
 	}
 
-	res, err := s.Recognizer.Recognize(ctx, ports.RecognizeInput{DocumentID: doc.ID, FileName: fileName, MimeType: mimeType, Content: content})
+	doc, extracted, err := s.applyRecognition(ctx, doc, content)
 	if err != nil {
-		_, _ = s.Docs.UpdateStatus(ctx, doc.ID, docStatusFailed)
 		return DocumentView{}, err
 	}
+	return DocumentView{Doc: doc, Extracted: &extracted}, nil
+}
 
+func (s *DocumentService) applyRecognition(ctx context.Context, doc domain.Document, content []byte) (domain.Document, domain.ExtractedData, error) {
+	res, err := s.Recognizer.Recognize(ctx, ports.RecognizeInput{DocumentID: doc.ID, FileName: doc.FileName, MimeType: doc.MimeType, Content: content})
+	if err != nil {
+		_, _ = s.Docs.UpdateStatus(ctx, doc.ID, docStatusFailed)
+		return domain.Document{}, domain.ExtractedData{}, err
+	}
 	now := time.Now()
 	modelVersion := res.ModelVersion
 	extracted, err := s.Extracted.Create(ctx, ports.ExtractedDataCreate{
@@ -122,7 +130,7 @@ func (s *DocumentService) Upload(ctx context.Context, ownerID, planItemID int64,
 		ModelVersion:         &modelVersion,
 	})
 	if err != nil {
-		return DocumentView{}, err
+		return domain.Document{}, domain.ExtractedData{}, err
 	}
 
 	if _, err := s.Docs.UpdateFields(ctx, doc.ID, ports.DocumentPatch{
@@ -138,13 +146,13 @@ func (s *DocumentService) Upload(ctx context.Context, ownerID, planItemID int64,
 		ProductNames:     res.ProductNames,
 		ContractNumbers:  res.ContractNumbers,
 	}); err != nil {
-		return DocumentView{}, err
+		return domain.Document{}, domain.ExtractedData{}, err
 	}
 	doc, err = s.Docs.UpdateStatus(ctx, doc.ID, docStatusPendingReview)
 	if err != nil {
-		return DocumentView{}, err
+		return domain.Document{}, domain.ExtractedData{}, err
 	}
-	return DocumentView{Doc: doc, Extracted: &extracted}, nil
+	return doc, extracted, nil
 }
 
 func (s *DocumentService) List(ctx context.Context, ownerID int64, planItemID *int64, page, size int) ([]DocumentView, int, error) {
@@ -246,6 +254,56 @@ func (s *DocumentService) Confirm(ctx context.Context, ownerID, docID int64) (Do
 		return DocumentView{}, err
 	}
 	return s.viewOf(ctx, doc)
+}
+
+func (s *DocumentService) Reject(ctx context.Context, ownerID, docID int64) (DocumentView, error) {
+	doc, err := s.Docs.GetByID(ctx, docID)
+	if err != nil {
+		return DocumentView{}, err
+	}
+	if _, err := requireItemByID(ctx, s.Items, s.Goals, s.Plans, doc.PlanItemID, ownerID); err != nil {
+		return DocumentView{}, err
+	}
+	if doc.Status == docStatusConfirmed {
+		return DocumentView{}, ErrConflict
+	}
+	doc, err = s.Docs.UpdateStatus(ctx, docID, docStatusRejected)
+	if err != nil {
+		return DocumentView{}, err
+	}
+	return s.viewOf(ctx, doc)
+}
+
+func (s *DocumentService) Reanalyze(ctx context.Context, ownerID, docID int64) (DocumentView, error) {
+	doc, err := s.Docs.GetByID(ctx, docID)
+	if err != nil {
+		return DocumentView{}, err
+	}
+	if _, err := requireItemByID(ctx, s.Items, s.Goals, s.Plans, doc.PlanItemID, ownerID); err != nil {
+		return DocumentView{}, err
+	}
+	if doc.Status == docStatusConfirmed {
+		return DocumentView{}, ErrConflict
+	}
+
+	obj, err := s.Store.Open(ctx, doc.FilePath)
+	if err != nil {
+		return DocumentView{}, err
+	}
+	defer obj.Body.Close()
+
+	content, err := io.ReadAll(obj.Body)
+	if err != nil {
+		return DocumentView{}, err
+	}
+	if doc, err = s.Docs.UpdateStatus(ctx, docID, docStatusProcessing); err != nil {
+		return DocumentView{}, err
+	}
+	doc, extracted, err := s.applyRecognition(ctx, doc, content)
+	if err != nil {
+		return DocumentView{}, err
+	}
+	return DocumentView{Doc: doc, Extracted: &extracted}, nil
 }
 
 func (s *DocumentService) viewOf(ctx context.Context, doc domain.Document) (DocumentView, error) {

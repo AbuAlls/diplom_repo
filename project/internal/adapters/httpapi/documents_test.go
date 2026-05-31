@@ -426,6 +426,63 @@ func TestDocumentListGetPatchConfirmFlow(t *testing.T) {
 	}
 }
 
+func TestDocumentRejectReanalyzeThenConfirmFlow(t *testing.T) {
+	srv, _ := newTestServer()
+	defer srv.Close()
+	token := register(t, srv.URL, "review@example.com")
+	seedItem(t, srv.URL, token)
+	uploadDoc(t, srv.URL, token, 1, "review.txt", "needs another look").Body.Close()
+
+	resp := do(t, "POST", srv.URL+"/v0/documents/1/reject", token, "")
+	var doc documentResponse
+	json.NewDecoder(resp.Body).Decode(&doc)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || doc.Status != "rejected" {
+		t.Fatalf("expected rejected document, status=%d doc=%+v", resp.StatusCode, doc)
+	}
+
+	resp = do(t, "POST", srv.URL+"/v0/documents/1/confirm", token, "")
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("expected 409 confirming rejected document, got %d", resp.StatusCode)
+	}
+
+	resp = do(t, "POST", srv.URL+"/v0/documents/1/reanalyze", token, "")
+	json.NewDecoder(resp.Body).Decode(&doc)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || doc.Status != "pending_review" {
+		t.Fatalf("expected pending_review after reanalyze, status=%d doc=%+v", resp.StatusCode, doc)
+	}
+	if doc.RecognizedText == "" || doc.ModelVersion == nil {
+		t.Fatalf("expected recognized data after reanalyze, got %+v", doc)
+	}
+
+	resp = do(t, "PATCH", srv.URL+"/v0/documents/1", token, `{"description":"Checked after reanalysis"}`)
+	json.NewDecoder(resp.Body).Decode(&doc)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || doc.Description == nil || *doc.Description != "Checked after reanalysis" {
+		t.Fatalf("expected patched description, status=%d doc=%+v", resp.StatusCode, doc)
+	}
+
+	resp = do(t, "POST", srv.URL+"/v0/documents/1/confirm", token, "")
+	json.NewDecoder(resp.Body).Decode(&doc)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || doc.Status != "confirmed" {
+		t.Fatalf("expected confirmed after reanalyze+patch, status=%d doc=%+v", resp.StatusCode, doc)
+	}
+
+	resp = do(t, "POST", srv.URL+"/v0/documents/1/reanalyze", token, "")
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("expected 409 reanalyzing confirmed document, got %d", resp.StatusCode)
+	}
+	resp = do(t, "POST", srv.URL+"/v0/documents/1/reject", token, "")
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("expected 409 rejecting confirmed document, got %d", resp.StatusCode)
+	}
+}
+
 func TestDocumentPatchEmptyBody(t *testing.T) {
 	srv, _ := newTestServer()
 	defer srv.Close()

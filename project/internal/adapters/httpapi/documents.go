@@ -19,6 +19,8 @@ const maxUploadBytes = 32 << 20 // 32 MiB
 // disambiguate when registered as separate wildcard patterns:
 //   - /v0/documents/upload/{id_plan_item}
 //   - /v0/documents/{id_document}/confirm
+//   - /v0/documents/{id_document}/reject
+//   - /v0/documents/{id_document}/reanalyze
 func (a *API) postDocumentAction(w http.ResponseWriter, r *http.Request) {
 	seg1 := r.PathValue("seg1")
 	seg2 := r.PathValue("seg2")
@@ -38,6 +40,24 @@ func (a *API) postDocumentAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		a.confirmDocument(w, r, docID)
+		return
+	}
+	if seg2 == "reject" {
+		docID, ok := parseQueryInt(seg1)
+		if !ok {
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid path id")
+			return
+		}
+		a.rejectDocument(w, r, docID)
+		return
+	}
+	if seg2 == "reanalyze" {
+		docID, ok := parseQueryInt(seg1)
+		if !ok {
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid path id")
+			return
+		}
+		a.reanalyzeDocument(w, r, docID)
 		return
 	}
 	writeError(w, http.StatusNotFound, "NOT_FOUND", "Unknown document action")
@@ -215,6 +235,24 @@ func (a *API) patchDocument(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) confirmDocument(w http.ResponseWriter, r *http.Request, docID int64) {
 	view, err := a.Docs.Confirm(r.Context(), userID(r), docID)
+	if err != nil {
+		writeUsecaseError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, toDocument(view))
+}
+
+func (a *API) rejectDocument(w http.ResponseWriter, r *http.Request, docID int64) {
+	view, err := a.Docs.Reject(r.Context(), userID(r), docID)
+	if err != nil {
+		writeUsecaseError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, toDocument(view))
+}
+
+func (a *API) reanalyzeDocument(w http.ResponseWriter, r *http.Request, docID int64) {
+	view, err := a.Docs.Reanalyze(r.Context(), userID(r), docID)
 	if err != nil {
 		writeUsecaseError(w, err)
 		return

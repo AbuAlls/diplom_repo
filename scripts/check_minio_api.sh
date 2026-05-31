@@ -130,8 +130,66 @@ if [[ "$storage_code" != "200" ]]; then
   print_failure "storage check" "$storage_code" "$storage_body"
   exit 1
 fi
+storage_status="$(require_json_field "$storage_body" '.object_status')"
+if [[ "$storage_status" != "available" ]]; then
+  print_failure "storage availability" "$storage_code" "$storage_body"
+  exit 1
+fi
+
+reject_body="$tmp_dir/reject.json"
+reject_code="$(request POST "$API_BASE/v0/documents/$document_id/reject" "$reject_body" \
+  -H "Authorization: Bearer $token")"
+if [[ "$reject_code" != "200" ]]; then
+  print_failure "reject document" "$reject_code" "$reject_body"
+  exit 1
+fi
+reject_status="$(require_json_field "$reject_body" '.status')"
+if [[ "$reject_status" != "rejected" ]]; then
+  print_failure "reject status" "$reject_code" "$reject_body"
+  exit 1
+fi
+
+reanalyze_body="$tmp_dir/reanalyze.json"
+reanalyze_code="$(request POST "$API_BASE/v0/documents/$document_id/reanalyze" "$reanalyze_body" \
+  -H "Authorization: Bearer $token")"
+if [[ "$reanalyze_code" != "200" ]]; then
+  print_failure "reanalyze document" "$reanalyze_code" "$reanalyze_body"
+  exit 1
+fi
+reanalyze_status="$(require_json_field "$reanalyze_body" '.status')"
+if [[ "$reanalyze_status" != "pending_review" ]]; then
+  print_failure "reanalyze status" "$reanalyze_code" "$reanalyze_body"
+  exit 1
+fi
+
+patch_body="$tmp_dir/patch.json"
+patch_code="$(request PATCH "$API_BASE/v0/documents/$document_id" "$patch_body" \
+  -H "Authorization: Bearer $token" \
+  -H "Content-Type: application/json" \
+  -d '{"description":"Checked by api-minio-check script"}')"
+if [[ "$patch_code" != "200" ]]; then
+  print_failure "patch document" "$patch_code" "$patch_body"
+  exit 1
+fi
+
+confirm_body="$tmp_dir/confirm.json"
+confirm_code="$(request POST "$API_BASE/v0/documents/$document_id/confirm" "$confirm_body" \
+  -H "Authorization: Bearer $token")"
+if [[ "$confirm_code" != "200" ]]; then
+  print_failure "confirm document" "$confirm_code" "$confirm_body"
+  exit 1
+fi
+confirm_status="$(require_json_field "$confirm_body" '.status')"
+if [[ "$confirm_status" != "confirmed" ]]; then
+  print_failure "confirm status" "$confirm_code" "$confirm_body"
+  exit 1
+fi
 
 printf 'TOKEN=%s\n' "$token"
 printf 'PLAN_ID=%s GOAL_ID=%s ITEM_ID=%s DOCUMENT_ID=%s\n' "$plan_id" "$goal_id" "$item_id" "$document_id"
-printf 'HTTP %s\n' "$storage_code"
+printf 'STORAGE HTTP %s status=%s\n' "$storage_code" "$storage_status"
+printf 'REJECT HTTP %s status=%s\n' "$reject_code" "$reject_status"
+printf 'REANALYZE HTTP %s status=%s\n' "$reanalyze_code" "$reanalyze_status"
+printf 'PATCH HTTP %s\n' "$patch_code"
+printf 'CONFIRM HTTP %s status=%s\n' "$confirm_code" "$confirm_status"
 jq . "$storage_body"
