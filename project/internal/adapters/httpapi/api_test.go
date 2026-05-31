@@ -202,10 +202,12 @@ func newTestServer() (*httptest.Server, *memPlanRepo) {
 			Store: store, Extracted: extracted, Recognizer: recognizer,
 		},
 		Analytics: &usecase.AnalyticsService{
-			Items: items, Goals: goals, Plans: plans, Docs: docs, Analyzer: &fakeAnalyzer{},
+			Items: items, Goals: goals, Plans: plans, Docs: docs,
+			Analyzer: &fakeAnalyzer{}, Sessions: usecase.NewSessionStore(),
 		},
 		InternalAnalytics: &usecase.InternalAnalyticsService{Query: &fakeQueryRepo{}},
 		InternalToken:     testInternalToken,
+		Sessions:          usecase.NewSessionStore(),
 	}
 	return httptest.NewServer(api.Routes()), plans
 }

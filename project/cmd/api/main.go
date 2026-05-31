@@ -80,7 +80,11 @@ func main() {
 		Extracted:  extractedRepo,
 		Recognizer: recognizer,
 	}
-	analyticsSvc := &usecase.AnalyticsService{Items: itemRepo, Goals: goalRepo, Plans: planRepo, Docs: docRepo, Analyzer: aiClient}
+	sessions := usecase.NewSessionStore()
+	analyticsSvc := &usecase.AnalyticsService{
+		Items: itemRepo, Goals: goalRepo, Plans: planRepo, Docs: docRepo,
+		Analyzer: aiClient, Sessions: sessions,
+	}
 	internalAnalyticsSvc := &usecase.InternalAnalyticsService{Query: queryRepo}
 
 	api := &httpapi.API{
@@ -92,6 +96,7 @@ func main() {
 		Analytics:         analyticsSvc,
 		InternalAnalytics: internalAnalyticsSvc,
 		InternalToken:     cfg.InternalAPIToken,
+		Sessions:          sessions,
 	}
 
 	srv := &http.Server{

@@ -2,7 +2,9 @@ package usecase
 
 import (
 	"context"
+	"fmt"
 	"strings"
+	"time"
 
 	"diplom.com/m/internal/domain"
 	"diplom.com/m/internal/ports"
@@ -14,6 +16,9 @@ type AnalyticsService struct {
 	Plans    ports.PlanRepo
 	Docs     ports.DocumentRepo
 	Analyzer ports.Analyzer
+	// Sessions maps per-analyze-call nonces to ownerIDs so the AI agent's
+	// backend callbacks can be scoped to the correct user's rows.
+	Sessions *SessionStore
 }
 
 // ItemAnalytics is the v0 single-item projection: the plan item plus
@@ -48,6 +53,10 @@ func (s *AnalyticsService) ItemAnalytics(ctx context.Context, ownerID, itemID in
 // Recommendations runs the analytics agent for an owned plan item and returns
 // its free-text recommendations. The agent introspects/queries the database via
 // the internal callback handlers.
+// sessionTTL is the lifetime of a per-analyze session nonce. It must be long
+// enough to cover the agent's full run (up to 3 LLM iterations + I/O).
+const sessionTTL = 15 * time.Minute
+
 func (s *AnalyticsService) Recommendations(ctx context.Context, ownerID, itemID int64, model, message string) (string, error) {
 	if strings.TrimSpace(message) == "" {
 		return "", ErrValidation
@@ -58,5 +67,20 @@ func (s *AnalyticsService) Recommendations(ctx context.Context, ownerID, itemID 
 	if _, err := requireItemByID(ctx, s.Items, s.Goals, s.Plans, itemID, ownerID); err != nil {
 		return "", err
 	}
-	return s.Analyzer.Analyze(ctx, model, message)
+
+	// Create a short-lived session so the agent's backend callbacks can be
+	// scoped to this user's data. We inject the nonce into the message so the
+	// LLM includes it as X-Internal-Token on every /api/* call it makes.
+	var scopedMessage = message
+	if s.Sessions != nil {
+		nonce := s.Sessions.Create(ownerID, sessionTTL)
+		defer s.Sessions.Delete(nonce)
+		scopedMessage = fmt.Sprintf(
+			"[SYSTEM: You MUST send the HTTP header \"X-Internal-Token: %s\" "+
+				"on EVERY request to the backend API (/api/schema and /api/analytics/query). "+
+				"This is mandatory for data security — queries without it will be rejected.]\n\n%s",
+			nonce, message,
+		)
+	}
+	return s.Analyzer.Analyze(ctx, model, scopedMessage)
 }

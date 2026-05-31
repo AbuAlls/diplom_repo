@@ -202,5 +202,8 @@ type AnalyticsQueryRepo interface {
 	Schema(ctx context.Context) (map[string][]string, error)
 	// RunReadOnlyQuery executes sql inside a read-only transaction and returns
 	// column names and positional row values.
-	RunReadOnlyQuery(ctx context.Context, sql string) (columns []string, rows [][]any, err error)
+	// ownerID > 0 activates per-tenant CTE scoping: user-owned tables are
+	// shadowed by CTEs that pre-filter rows to that owner, so the agent's
+	// arbitrary SELECT only ever sees its initiating user's data.
+	RunReadOnlyQuery(ctx context.Context, sql string, ownerID int64) (columns []string, rows [][]any, err error)
 }

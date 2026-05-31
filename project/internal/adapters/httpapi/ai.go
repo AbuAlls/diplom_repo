@@ -32,12 +32,16 @@ func (a *API) getSchema(w http.ResponseWriter, r *http.Request) {
 }
 
 // runQuery (internal) executes a read-only SELECT on behalf of the AI agent.
+// ownerID is extracted from context when a per-session token was presented;
+// it is 0 when the global token is used, in which case no row scoping applies.
 func (a *API) runQuery(w http.ResponseWriter, r *http.Request) {
+	ownerID, _ := r.Context().Value(ctxInternalOwnerID{}).(int64)
+
 	var req queryRequest
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	cols, rows, count, err := a.InternalAnalytics.RunQuery(r.Context(), req.Query)
+	cols, rows, count, err := a.InternalAnalytics.RunQuery(r.Context(), req.Query, ownerID)
 	if err != nil {
 		writeUsecaseError(w, err)
 		return

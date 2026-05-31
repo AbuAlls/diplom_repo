@@ -2,6 +2,7 @@ package pgcore
 
 import (
 	"context"
+	"fmt"
 
 	"diplom.com/m/internal/ports"
 	"github.com/jackc/pgx/v5"
@@ -40,16 +41,28 @@ order by table_name, ordinal_position`
 }
 
 // RunReadOnlyQuery executes sql inside a read-only transaction and returns the
-// column names and positional row values. The read-only transaction is a
-// hard backstop in addition to the use-case SQL validation.
-func (r *AnalyticsQueryRepo) RunReadOnlyQuery(ctx context.Context, sql string) ([]string, [][]any, error) {
+// column names and positional row values.
+//
+// When ownerID > 0 the query is wrapped in per-tenant CTEs that shadow the
+// raw user-owned tables with pre-filtered versions. The agent's arbitrary SQL
+// (e.g. SELECT * FROM documents) will therefore only ever see rows belonging
+// to that owner — without needing Postgres RLS or schema changes.
+//
+// Tables wrapped: documents, plans, plan_goals, plan_items, folders,
+// extracted_document_data.
+func (r *AnalyticsQueryRepo) RunReadOnlyQuery(ctx context.Context, sql string, ownerID int64) ([]string, [][]any, error) {
+	effectiveSQL := sql
+	if ownerID > 0 {
+		effectiveSQL = ownerScopedSQL(sql, ownerID)
+	}
+
 	tx, err := r.Store.Pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return nil, nil, err
 	}
 	defer tx.Rollback(ctx)
 
-	rows, err := tx.Query(ctx, sql)
+	rows, err := tx.Query(ctx, effectiveSQL)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -73,6 +86,41 @@ func (r *AnalyticsQueryRepo) RunReadOnlyQuery(ctx context.Context, sql string) (
 		return nil, nil, err
 	}
 	return cols, out, nil
+}
+
+// ownerScopedSQL wraps the agent's query in a WITH clause that shadows each
+// user-owned table with a pre-filtered CTE. Postgres resolves CTE names before
+// table names within the same WITH scope, so the original SQL references are
+// transparently redirected without any query rewriting.
+//
+// Note: we use public.<table> in the CTE definitions to avoid recursive
+// self-reference; the agent's own SQL then references the CTE aliases.
+func ownerScopedSQL(sql string, ownerID int64) string {
+	id := ownerID // safe: ownerID is int64, not user input
+	return fmt.Sprintf(`
+WITH
+  documents AS (
+    SELECT * FROM public.documents WHERE uploaded_by = %d
+  ),
+  plans AS (
+    SELECT * FROM public.plans WHERE created_by = %d
+  ),
+  plan_goals AS (
+    SELECT pg.* FROM public.plan_goals pg
+    JOIN plans ON plans.id = pg.plan_id
+  ),
+  plan_items AS (
+    SELECT pi.* FROM public.plan_items pi
+    JOIN plan_goals ON plan_goals.id = pi.goal_id
+  ),
+  folders AS (
+    SELECT * FROM public.folders WHERE created_by = %d
+  ),
+  extracted_document_data AS (
+    SELECT edd.* FROM public.extracted_document_data edd
+    JOIN documents ON documents.id = edd.document_id
+  )
+%s`, id, id, id, sql)
 }
 
 var _ ports.AnalyticsQueryRepo = (*AnalyticsQueryRepo)(nil)

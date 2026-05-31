@@ -19,11 +19,13 @@ func (s *InternalAnalyticsService) Schema(ctx context.Context) (map[string][]str
 	return s.Query.Schema(ctx)
 }
 
-func (s *InternalAnalyticsService) RunQuery(ctx context.Context, sql string) (columns []string, rows [][]any, rowCount int, err error) {
+// RunQuery validates the SQL, then executes it via the repo. ownerID > 0
+// activates per-tenant CTE scoping so user-owned rows are pre-filtered.
+func (s *InternalAnalyticsService) RunQuery(ctx context.Context, sql string, ownerID int64) (columns []string, rows [][]any, rowCount int, err error) {
 	if err := validateReadOnlySQL(sql); err != nil {
 		return nil, nil, 0, err
 	}
-	cols, data, err := s.Query.RunReadOnlyQuery(ctx, sql)
+	cols, data, err := s.Query.RunReadOnlyQuery(ctx, sql, ownerID)
 	if err != nil {
 		return nil, nil, 0, err
 	}
