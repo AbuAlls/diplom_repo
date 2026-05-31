@@ -19,6 +19,13 @@ type Config struct {
 	JWTIssuer       string
 	AccessTokenTTL  time.Duration
 	RefreshTokenTTL time.Duration
+
+	// AI analytics service integration.
+	RecognizerKind   string // "mock" (default) or "audit"
+	AIServiceURL     string
+	AIModel          string
+	AIRequestTimeout time.Duration
+	InternalAPIToken string // shared secret for the agent's /api/* callbacks
 }
 
 func Load() Config {
@@ -44,6 +51,12 @@ func Load() Config {
 		JWTIssuer:       getenv("JWT_ISSUER", "docsapp"),
 		AccessTokenTTL:  getDuration("ACCESS_TOKEN_TTL", 15*time.Minute),
 		RefreshTokenTTL: getDuration("REFRESH_TOKEN_TTL", 7*24*time.Hour),
+
+		RecognizerKind:   getenv("RECOGNIZER", "mock"),
+		AIServiceURL:     getenv("AI_SERVICE_URL", "http://localhost:8000"),
+		AIModel:          getenv("AI_MODEL", "yc:qwen3.5-35b-a3b"),
+		AIRequestTimeout: getDuration("AI_REQUEST_TIMEOUT", 60*time.Second),
+		InternalAPIToken: getenv("INTERNAL_API_TOKEN", "dev-internal-token-change-me"),
 	}
 }
 

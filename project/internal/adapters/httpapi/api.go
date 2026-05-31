@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"crypto/subtle"
 	"net/http"
 	"strings"
 
@@ -15,6 +16,11 @@ type API struct {
 	Items     *usecase.PlanItemService
 	Docs      *usecase.DocumentService
 	Analytics *usecase.AnalyticsService
+	// InternalAnalytics backs the AI agent's read-only DB callbacks.
+	InternalAnalytics *usecase.InternalAnalyticsService
+	// InternalToken is the shared secret the AI service must present on
+	// /api/* callbacks (the agent has no user JWT).
+	InternalToken string
 }
 
 func (a *API) Routes() http.Handler {
@@ -46,6 +52,11 @@ func (a *API) Routes() http.Handler {
 	mux.Handle("PATCH /v0/documents/{id_document}", a.authenticated(a.patchDocument))
 
 	mux.Handle("GET /v0/items/{id_item}/analytics", a.authenticated(a.getItemAnalytics))
+	mux.Handle("POST /v0/items/{id_item}/analyze", a.authenticated(a.analyzeItem))
+
+	// Internal callbacks for the AI analytics agent (shared-secret auth).
+	mux.Handle("GET /api/schema", a.internalAuth(a.getSchema))
+	mux.Handle("POST /api/analytics/query", a.internalAuth(a.runQuery))
 
 	return mux
 }
@@ -71,6 +82,19 @@ func (a *API) authenticated(next http.HandlerFunc) http.Handler {
 func userID(r *http.Request) int64 {
 	v, _ := r.Context().Value(ctxUserID{}).(int64)
 	return v
+}
+
+// internalAuth guards the AI-agent callbacks with a shared secret presented in
+// the X-Internal-Token header (constant-time compared).
+func (a *API) internalAuth(next http.HandlerFunc) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token := r.Header.Get("X-Internal-Token")
+		if a.InternalToken == "" || subtle.ConstantTimeCompare([]byte(token), []byte(a.InternalToken)) != 1 {
+			writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid internal token")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (a *API) healthz(w http.ResponseWriter, r *http.Request) {

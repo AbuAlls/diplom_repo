@@ -59,6 +59,45 @@ type listResponse struct {
 	Meta  PaginationMeta `json:"meta"`
 }
 
+// --- AI integration DTOs ---
+
+type analyzeRequest struct {
+	Message string `json:"message"`
+	Model   string `json:"model"`
+}
+
+type analyzeResponse struct {
+	Recommendations string `json:"recommendations"`
+}
+
+// schemaColumn matches the agent's expected {"column": "<name>"} entry.
+type schemaColumn struct {
+	Column string `json:"column"`
+}
+
+// toSchemaResponse shapes {table: [columns]} into {table: [{"column": name}]}.
+func toSchemaResponse(schema map[string][]string) map[string][]schemaColumn {
+	out := make(map[string][]schemaColumn, len(schema))
+	for table, cols := range schema {
+		entries := make([]schemaColumn, 0, len(cols))
+		for _, c := range cols {
+			entries = append(entries, schemaColumn{Column: c})
+		}
+		out[table] = entries
+	}
+	return out
+}
+
+type queryRequest struct {
+	Query string `json:"query"`
+}
+
+type queryResponse struct {
+	Columns  []string `json:"columns"`
+	Rows     [][]any  `json:"rows"`
+	RowCount int      `json:"row_count"`
+}
+
 func toPlan(p domain.Plan) planResponse {
 	return planResponse{
 		ID:          p.ID,

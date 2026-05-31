@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -74,8 +75,15 @@ func (s *DocumentService) Upload(ctx context.Context, ownerID, planItemID int64,
 		return DocumentView{}, err
 	}
 
+	// Buffer the upload once so we can both persist it and hand the bytes to
+	// the recognizer (the real AI client posts them; the mock ignores them).
+	content, err := io.ReadAll(file)
+	if err != nil {
+		return DocumentView{}, err
+	}
+
 	key := fmt.Sprintf("plan_item_%d/%d_%s", planItemID, time.Now().UnixNano(), sanitizeFileName(fileName))
-	size, err := s.Store.Save(ctx, key, file)
+	size, err := s.Store.Save(ctx, key, bytes.NewReader(content))
 	if err != nil {
 		return DocumentView{}, err
 	}
@@ -95,7 +103,7 @@ func (s *DocumentService) Upload(ctx context.Context, ownerID, planItemID int64,
 		return DocumentView{}, err
 	}
 
-	res, err := s.Recognizer.Recognize(ctx, ports.RecognizeInput{DocumentID: doc.ID, FileName: fileName, MimeType: mimeType})
+	res, err := s.Recognizer.Recognize(ctx, ports.RecognizeInput{DocumentID: doc.ID, FileName: fileName, MimeType: mimeType, Content: content})
 	if err != nil {
 		_, _ = s.Docs.UpdateStatus(ctx, doc.ID, docStatusFailed)
 		return DocumentView{}, err

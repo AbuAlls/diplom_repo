@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"diplom.com/m/internal/adapters/auditai"
 	httpapi "diplom.com/m/internal/adapters/httpapi"
 	"diplom.com/m/internal/adapters/pganalysis"
 	"diplom.com/m/internal/adapters/pgcore"
@@ -15,6 +16,7 @@ import (
 	"diplom.com/m/internal/adapters/storage"
 	"diplom.com/m/internal/auth"
 	"diplom.com/m/internal/config"
+	"diplom.com/m/internal/ports"
 	"diplom.com/m/internal/usecase"
 )
 
@@ -42,11 +44,22 @@ func main() {
 	folderRepo := pgcore.NewFolderRepo(coreStore)
 	docRepo := pgcore.NewDocumentRepo(coreStore)
 	extractedRepo := pganalysis.NewExtractedDataRepo(analysisStore)
+	queryRepo := pgcore.NewAnalyticsQueryRepo(coreStore)
 	fileStore, err := storage.NewS3Store(cfg.S3Endpoint, cfg.S3Bucket, cfg.S3Region, cfg.S3AccessKey, cfg.S3SecretKey)
 	if err != nil {
 		log.Fatal(err)
 	}
-	recognizer := recognition.New()
+
+	// The AI client serves both the analytics agent (Analyzer) and, when
+	// RECOGNIZER=audit, document recognition; otherwise the deterministic mock.
+	aiClient := auditai.NewClient(cfg.AIServiceURL, cfg.AIModel, cfg.AIRequestTimeout)
+	var recognizer ports.Recognizer = recognition.New()
+	if cfg.RecognizerKind == "audit" {
+		recognizer = &auditai.Recognizer{Client: aiClient}
+		log.Printf("recognizer: audit AI service at %s (model %s)", cfg.AIServiceURL, cfg.AIModel)
+	} else {
+		log.Printf("recognizer: mock")
+	}
 
 	authSvc := &usecase.AuthService{
 		Users:      userRepo,
@@ -67,15 +80,18 @@ func main() {
 		Extracted:  extractedRepo,
 		Recognizer: recognizer,
 	}
-	analyticsSvc := &usecase.AnalyticsService{Items: itemRepo, Goals: goalRepo, Plans: planRepo, Docs: docRepo}
+	analyticsSvc := &usecase.AnalyticsService{Items: itemRepo, Goals: goalRepo, Plans: planRepo, Docs: docRepo, Analyzer: aiClient}
+	internalAnalyticsSvc := &usecase.InternalAnalyticsService{Query: queryRepo}
 
 	api := &httpapi.API{
-		Auth:      authSvc,
-		Plans:     planSvc,
-		Goals:     goalSvc,
-		Items:     itemSvc,
-		Docs:      docSvc,
-		Analytics: analyticsSvc,
+		Auth:              authSvc,
+		Plans:             planSvc,
+		Goals:             goalSvc,
+		Items:             itemSvc,
+		Docs:              docSvc,
+		Analytics:         analyticsSvc,
+		InternalAnalytics: internalAnalyticsSvc,
+		InternalToken:     cfg.InternalAPIToken,
 	}
 
 	srv := &http.Server{

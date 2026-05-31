@@ -156,6 +156,9 @@ type RecognizeInput struct {
 	DocumentID int64
 	FileName   string
 	MimeType   string
+	// Content is the raw uploaded file. The mock ignores it; the real
+	// HTTP recognizer posts it to the analysis service.
+	Content []byte
 }
 
 // RecognizeResult is the output of the (mock) recognition service: the analysis
@@ -183,4 +186,21 @@ type RecognizeResult struct {
 // Recognizer is the OCR/LLM analysis port. The v0 implementation is a deterministic mock.
 type Recognizer interface {
 	Recognize(ctx context.Context, in RecognizeInput) (RecognizeResult, error)
+}
+
+// Analyzer runs the business-analytics agent and returns its recommendations.
+// Implemented by the external AI-service client; the agent calls back into the
+// AnalyticsQueryRepo handlers to introspect and query the database.
+type Analyzer interface {
+	Analyze(ctx context.Context, model, message string) (recommendations string, err error)
+}
+
+// AnalyticsQueryRepo backs the agent's read-only callbacks: schema introspection
+// and ad-hoc SELECT execution over the core database.
+type AnalyticsQueryRepo interface {
+	// Schema returns public table names mapped to their column names.
+	Schema(ctx context.Context) (map[string][]string, error)
+	// RunReadOnlyQuery executes sql inside a read-only transaction and returns
+	// column names and positional row values.
+	RunReadOnlyQuery(ctx context.Context, sql string) (columns []string, rows [][]any, err error)
 }

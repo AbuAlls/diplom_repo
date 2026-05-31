@@ -1,0 +1,1981 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ИИ-Консультант — Web</title>
+  <style>
+/* ============================================================
+   ИИ-Консультант — Web App design tokens
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Golos+Text:wght@400;500;600&display=swap');
+
+:root {
+  /* brand accent (overridable by tweaks) */
+  --accent-1: #7C3AED;
+  --accent-2: #9333EA;
+  --accent-3: #C026D3;
+  --brand-grad: linear-gradient(135deg, var(--accent-1) 0%, var(--accent-2) 52%, var(--accent-3) 100%);
+  --brand-soft: color-mix(in srgb, var(--accent-1) 12%, white);
+  --brand-ink: var(--accent-1);
+
+  /* semantic */
+  --red: #EF4444;
+  --amber: #F59E0B;
+  --green: #22C55E;
+  --indigo: #6366F1;
+
+  /* radii & density */
+  --r-sm: 12px;
+  --r-md: 18px;
+  --r-lg: 26px;
+  --r-xl: 32px;
+  --gap: 22px;
+  --pad-card: 22px;
+  --sidebar-w: 264px;
+
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ---- Light theme (default) ---- */
+:root, [data-theme="light"] {
+  --bg: #F1F0FA;
+  --bg-2: #E9E7F6;
+  --surface: #FFFFFF;
+  --surface-2: #F7F6FD;
+  --surface-inset: #F2F1F9;
+  --ink: #1C1830;
+  --ink-2: #4A455F;
+  --muted: #8C88A0;
+  --muted-2: #A8A4BA;
+  --line: #ECEAF4;
+  --line-2: #E2DFF0;
+  --shadow: 0 18px 40px -24px rgba(60, 30, 110, 0.30), 0 2px 8px -4px rgba(60, 30, 110, 0.10);
+  --shadow-sm: 0 8px 20px -16px rgba(60, 30, 110, 0.35);
+  --on-grad: rgba(255,255,255,0.92);
+  --frost: rgba(255,255,255,0.22);
+}
+
+/* ---- Dark theme ---- */
+[data-theme="dark"] {
+  --bg: #110E1B;
+  --bg-2: #171327;
+  --surface: #1D1830;
+  --surface-2: #241E3A;
+  --surface-inset: #251F3B;
+  --ink: #F4F2FB;
+  --ink-2: #C5C0DA;
+  --muted: #918CAB;
+  --muted-2: #6F6A89;
+  --line: #2B2542;
+  --line-2: #342D4F;
+  --shadow: 0 22px 50px -26px rgba(0, 0, 0, 0.7);
+  --shadow-sm: 0 10px 24px -18px rgba(0, 0, 0, 0.7);
+  --on-grad: rgba(255,255,255,0.94);
+  --frost: rgba(255,255,255,0.16);
+  --brand-soft: color-mix(in srgb, var(--accent-1) 26%, #1D1830);
+  --brand-ink: color-mix(in srgb, var(--accent-1) 55%, white);
+}
+
+/* density */
+[data-density="compact"] {
+  --gap: 16px;
+  --pad-card: 17px;
+  --r-lg: 22px;
+  --r-md: 15px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body { height: 100%; }
+
+body {
+  font-family: 'Golos Text', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.5;
+  transition: background .35s ease, color .35s ease;
+}
+
+h1, h2, h3, h4, .display { font-family: 'Manrope', system-ui, sans-serif; }
+
+#root { min-height: 100%; }
+
+::selection { background: color-mix(in srgb, var(--accent-2) 30%, transparent); }
+
+/* scrollbar */
+.scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+.scroll::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 20px; border: 3px solid var(--bg); }
+.scroll::-webkit-scrollbar-track { background: transparent; }
+
+/* ============================================================
+   Layout shell
+   ============================================================ */
+.app-shell { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; }
+
+/* Sidebar */
+.sidebar {
+  position: sticky; top: 0; height: 100vh;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  display: flex; flex-direction: column;
+  padding: 22px 16px;
+  gap: 6px;
+  z-index: 30;
+  transition: background .35s ease, border-color .35s ease;
+}
+.brand { display: flex; align-items: center; gap: 12px; padding: 8px 10px 18px; }
+.brand-mark {
+  width: 42px; height: 42px; border-radius: 13px;
+  background: var(--brand-grad);
+  display: grid; place-items: center; color: white;
+  box-shadow: 0 10px 22px -10px color-mix(in srgb, var(--accent-2) 70%, transparent);
+  flex: none;
+}
+.brand-name { font-family: 'Manrope'; font-weight: 800; font-size: 16px; line-height: 1.1; letter-spacing: -.02em; }
+.brand-sub { font-size: 11.5px; color: var(--muted); font-weight: 500; }
+
+.nav-label { font-size: 10.5px; font-weight: 700; letter-spacing: .12em; color: var(--muted-2); text-transform: uppercase; padding: 16px 12px 7px; }
+
+.nav-item {
+  display: flex; align-items: center; gap: 13px;
+  padding: 11px 13px; border-radius: 13px;
+  color: var(--ink-2); font-weight: 600; font-size: 14.5px;
+  cursor: pointer; border: none; background: transparent; width: 100%; text-align: left;
+  transition: background .16s ease, color .16s ease;
+  position: relative;
+}
+.nav-item:hover { background: var(--surface-2); color: var(--ink); }
+.nav-item.active { background: var(--brand-soft); color: var(--brand-ink); }
+.nav-item.active .nav-ico { color: var(--brand-ink); }
+.nav-ico { color: var(--muted); flex: none; transition: color .16s; }
+.nav-item .badge-dot { margin-left: auto; }
+
+.side-user {
+  margin-top: auto; display: flex; align-items: center; gap: 11px;
+  padding: 11px; border-radius: 15px; background: var(--surface-2);
+  cursor: pointer; border: 1px solid var(--line);
+}
+.side-user:hover { border-color: var(--line-2); }
+
+/* Main column */
+.main { display: flex; flex-direction: column; min-width: 0; }
+.topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 18px;
+  padding: 18px 34px;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter: saturate(140%) blur(14px);
+  border-bottom: 1px solid var(--line);
+}
+.page-title { font-family: 'Manrope'; font-weight: 800; font-size: 23px; letter-spacing: -.02em; }
+.page-sub { font-size: 13px; color: var(--muted); font-weight: 500; margin-top: 1px; }
+
+.search {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 13px; padding: 10px 14px; min-width: 280px; color: var(--muted);
+}
+.search input { border: none; background: transparent; outline: none; color: var(--ink); font: inherit; width: 100%; }
+.search input::placeholder { color: var(--muted-2); }
+
+.content { padding: 28px 34px 56px; max-width: 1240px; width: 100%; }
+
+/* ============================================================
+   Primitives
+   ============================================================ */
+.card {
+  background: var(--surface);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--line);
+  padding: var(--pad-card);
+  transition: background .35s ease, border-color .35s, transform .18s, box-shadow .18s;
+}
+.card.flat { box-shadow: none; }
+.card.tap { cursor: pointer; }
+.card.tap:hover { transform: translateY(-3px); box-shadow: var(--shadow), 0 0 0 1px color-mix(in srgb, var(--accent-2) 22%, transparent); }
+
+.section-label { font-size: 11.5px; font-weight: 700; letter-spacing: .1em; color: var(--muted); text-transform: uppercase; }
+
+.icon-tile {
+  width: 52px; height: 52px; border-radius: 15px; flex: none;
+  display: grid; place-items: center;
+  background: var(--brand-soft); color: var(--brand-ink);
+}
+.icon-tile.sm { width: 42px; height: 42px; border-radius: 12px; }
+.icon-tile.lg { width: 62px; height: 62px; border-radius: 18px; }
+.icon-tile.red { background: color-mix(in srgb, var(--red) 14%, var(--surface)); color: var(--red); }
+.icon-tile.amber { background: color-mix(in srgb, var(--amber) 16%, var(--surface)); color: #D97706; }
+.icon-tile.green { background: color-mix(in srgb, var(--green) 15%, var(--surface)); color: #15803D; }
+.icon-tile.indigo { background: color-mix(in srgb, var(--indigo) 14%, var(--surface)); color: var(--indigo); }
+
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 999px;
+  font-size: 12.5px; font-weight: 700; line-height: 1;
+  background: var(--brand-soft); color: var(--brand-ink);
+}
+.badge.amber { background: color-mix(in srgb, var(--amber) 18%, var(--surface)); color: #B45309; }
+.badge.red { background: color-mix(in srgb, var(--red) 14%, var(--surface)); color: #DC2626; }
+.badge.green { background: color-mix(in srgb, var(--green) 16%, var(--surface)); color: #15803D; }
+.badge.indigo { background: color-mix(in srgb, var(--indigo) 14%, var(--surface)); color: var(--indigo); }
+.badge.ghost { background: var(--surface-inset); color: var(--ink-2); }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 13px; border-radius: 999px; font-size: 13px; font-weight: 700;
+  background: var(--brand-soft); color: var(--brand-ink);
+}
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+  padding: 11px 18px; border-radius: 13px; border: none;
+  font-family: 'Manrope'; font-weight: 700; font-size: 14px; cursor: pointer;
+  transition: transform .14s, box-shadow .18s, background .18s, opacity .18s;
+}
+.btn:active { transform: scale(.97); }
+.btn-primary { background: var(--brand-grad); color: white; box-shadow: 0 12px 24px -12px color-mix(in srgb, var(--accent-2) 80%, transparent); }
+.btn-primary:hover { box-shadow: 0 16px 30px -12px color-mix(in srgb, var(--accent-2) 85%, transparent); }
+.btn-ghost { background: var(--surface); color: var(--ink); border: 1px solid var(--line-2); box-shadow: var(--shadow-sm); }
+.btn-ghost:hover { background: var(--surface-2); }
+.btn-soft { background: var(--brand-soft); color: var(--brand-ink); }
+.btn.sm { padding: 8px 13px; font-size: 13px; border-radius: 11px; }
+.btn.icon { padding: 10px; width: 42px; height: 42px; }
+
+.avatar {
+  width: 40px; height: 40px; border-radius: 12px; flex: none;
+  display: grid; place-items: center; color: white; font-family: 'Manrope';
+  font-weight: 800; font-size: 15px; background: var(--brand-grad);
+}
+.avatar.sm { width: 32px; height: 32px; border-radius: 10px; font-size: 13px; }
+
+/* progress bar */
+.track { height: 9px; border-radius: 999px; background: var(--surface-inset); overflow: hidden; }
+.track .fill { height: 100%; border-radius: 999px; transition: width .6s cubic-bezier(.2,.8,.2,1); }
+
+/* gradient hero */
+.hero {
+  position: relative; overflow: hidden; color: white;
+  background: var(--brand-grad);
+  border-radius: var(--r-xl);
+  padding: 30px 32px;
+  box-shadow: 0 26px 50px -28px color-mix(in srgb, var(--accent-2) 85%, transparent);
+}
+.hero .blob { position: absolute; border-radius: 50%; background: rgba(255,255,255,.13); pointer-events: none; }
+.hero .blob.a { width: 230px; height: 230px; top: -90px; right: -40px; }
+.hero .blob.b { width: 150px; height: 150px; bottom: -70px; right: 120px; background: rgba(255,255,255,.09); }
+.hero .frost {
+  width: 64px; height: 64px; border-radius: 18px; flex: none;
+  background: var(--frost); backdrop-filter: blur(6px);
+  display: grid; place-items: center; border: 1px solid rgba(255,255,255,.25);
+}
+
+/* grids */
+.grid { display: grid; gap: var(--gap); }
+.row { display: flex; gap: var(--gap); }
+.stack { display: flex; flex-direction: column; gap: var(--gap); }
+
+.stat-num { font-family: 'Manrope'; font-weight: 800; letter-spacing: -.03em; line-height: 1; }
+
+/* list row */
+.lrow {
+  display: flex; align-items: center; gap: 15px; padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+.lrow:first-child { border-top: none; }
+
+/* fade/slide animation for view switches */
+@keyframes viewIn { from { transform: translateY(9px); } to { transform: none; } }
+.view { animation: viewIn .38s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes pop { from { opacity:0; transform: scale(.96) translateY(8px);} to {opacity:1; transform:none;} }
+
+/* segmented */
+.seg { display: inline-flex; background: var(--surface-inset); border-radius: 12px; padding: 4px; gap: 3px; }
+.seg button { border: none; background: transparent; padding: 8px 15px; border-radius: 9px; font: inherit; font-weight: 600; font-size: 13.5px; color: var(--muted); cursor: pointer; transition: .15s; }
+.seg button.on { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
+
+/* dropzone */
+.dropzone {
+  border: 2px dashed var(--line-2); border-radius: var(--r-lg);
+  padding: 48px; text-align: center; background: var(--surface-2);
+  transition: .2s; cursor: pointer;
+}
+.dropzone:hover, .dropzone.drag { border-color: var(--accent-2); background: var(--brand-soft); }
+
+/* form fields */
+.field { display: flex; flex-direction: column; gap: 7px; }
+.field > span { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.field-in { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--line-2); border-radius: 13px; padding: 12px 14px; transition: border-color .16s, box-shadow .16s; }
+.field-in:focus-within { border-color: var(--accent-2); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-2) 14%, transparent); }
+.field-in input { border: none; background: transparent; outline: none; font: inherit; color: var(--ink); width: 100%; }
+
+@media (max-width: 820px) { .auth-brand { display: none !important; } div[style*="grid-template-columns: 1.05fr 1fr"] { grid-template-columns: 1fr !important; } }
+
+/* status pill */
+.status { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 700; }
+.status .dot { width: 8px; height: 8px; border-radius: 50%; }
+
+/* modal */
+.overlay { position: fixed; inset: 0; background: rgba(20,12,40,.5); backdrop-filter: blur(4px); z-index: 60; display: grid; place-items: center; padding: 24px; animation: viewIn .2s; }
+.modal { width: min(560px, 100%); max-height: 88vh; overflow: auto; background: var(--surface); border-radius: var(--r-xl); box-shadow: 0 40px 90px -30px rgba(0,0,0,.5); animation: pop .28s cubic-bezier(.2,.8,.2,1); }
+
+/* mobile */
+.menu-btn { display: none; }
+@media (max-width: 940px) {
+  .app-shell { grid-template-columns: 1fr; }
+  .sidebar { position: fixed; left: 0; top: 0; transform: translateX(-100%); transition: transform .28s ease; width: 280px; box-shadow: var(--shadow); }
+  .sidebar.open { transform: none; }
+  .menu-btn { display: inline-flex; }
+  .search { min-width: 0; flex: 1; }
+  .content { padding: 20px 18px 48px; }
+  .topbar { padding: 14px 18px; }
+  .scrim { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 25; }
+}
+@media (max-width: 560px) {
+  .hide-sm { display: none !important; }
+}
+
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" data-file="tweaks-panel.jsx">
+
+/* BEGIN USAGE */
+// tweaks-panel.jsx
+// Reusable Tweaks shell + form-control helpers.
+// Exports (to window): useTweaks, TweaksPanel, TweakSection, TweakRow, TweakSlider,
+//   TweakToggle, TweakRadio, TweakSelect, TweakText, TweakNumber, TweakColor, TweakButton.
+//
+// Owns the host protocol (listens for __activate_edit_mode / __deactivate_edit_mode,
+// posts __edit_mode_available / __edit_mode_set_keys / __edit_mode_dismissed) so
+// individual prototypes don't re-roll it. Ships a consistent set of controls so you
+// don't hand-draw <input type="range">, segmented radios, steppers, etc.
+//
+// Usage (in an HTML file that loads React + Babel):
+//
+//   const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+//     "primaryColor": "#D97757",
+//     "palette": ["#D97757", "#29261b", "#f6f4ef"],
+//     "fontSize": 16,
+//     "density": "regular",
+//     "dark": false
+//   }/*EDITMODE-END*/;
+//
+//   function App() {
+//     const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+//     return (
+//       <div style={{ fontSize: t.fontSize, color: t.primaryColor }}>
+//         Hello
+//         <TweaksPanel>
+//           <TweakSection label="Typography" />
+//           <TweakSlider label="Font size" value={t.fontSize} min={10} max={32} unit="px"
+//                        onChange={(v) => setTweak('fontSize', v)} />
+//           <TweakRadio  label="Density" value={t.density}
+//                        options={['compact', 'regular', 'comfy']}
+//                        onChange={(v) => setTweak('density', v)} />
+//           <TweakSection label="Theme" />
+//           <TweakColor  label="Primary" value={t.primaryColor}
+//                        options={['#D97757', '#2A6FDB', '#1F8A5B', '#7A5AE0']}
+//                        onChange={(v) => setTweak('primaryColor', v)} />
+//           <TweakColor  label="Palette" value={t.palette}
+//                        options={[['#D97757', '#29261b', '#f6f4ef'],
+//                                  ['#475569', '#0f172a', '#f1f5f9']]}
+//                        onChange={(v) => setTweak('palette', v)} />
+//           <TweakToggle label="Dark mode" value={t.dark}
+//                        onChange={(v) => setTweak('dark', v)} />
+//         </TweaksPanel>
+//       </div>
+//     );
+//   }
+//
+// TweakRadio is the segmented control for 2–3 short options (auto-falls-back to
+// TweakSelect past ~16/~10 chars per label); reach for TweakSelect directly when
+// options are many or long. For color tweaks always curate 3-4 options rather than
+// a free picker; an option can also be a whole 2–5 color palette (the stored value
+// is the array). The Tweak* controls are a floor, not a ceiling — build custom
+// controls inside the panel if a tweak calls for UI they don't cover.
+/* END USAGE */
+// ─────────────────────────────────────────────────────────────────────────────
+
+const __TWEAKS_STYLE = `
+  .twk-panel{position:fixed;right:16px;bottom:16px;z-index:2147483646;width:280px;
+    max-height:calc(100vh - 32px);display:flex;flex-direction:column;
+    transform:scale(var(--dc-inv-zoom,1));transform-origin:bottom right;
+    background:rgba(250,249,247,.78);color:#29261b;
+    -webkit-backdrop-filter:blur(24px) saturate(160%);backdrop-filter:blur(24px) saturate(160%);
+    border:.5px solid rgba(255,255,255,.6);border-radius:14px;
+    box-shadow:0 1px 0 rgba(255,255,255,.5) inset,0 12px 40px rgba(0,0,0,.18);
+    font:11.5px/1.4 ui-sans-serif,system-ui,-apple-system,sans-serif;overflow:hidden}
+  .twk-hd{display:flex;align-items:center;justify-content:space-between;
+    padding:10px 8px 10px 14px;cursor:move;user-select:none}
+  .twk-hd b{font-size:12px;font-weight:600;letter-spacing:.01em}
+  .twk-x{appearance:none;border:0;background:transparent;color:rgba(41,38,27,.55);
+    width:22px;height:22px;border-radius:6px;cursor:default;font-size:13px;line-height:1}
+  .twk-x:hover{background:rgba(0,0,0,.06);color:#29261b}
+  .twk-body{padding:2px 14px 14px;display:flex;flex-direction:column;gap:10px;
+    overflow-y:auto;overflow-x:hidden;min-height:0;
+    scrollbar-width:thin;scrollbar-color:rgba(0,0,0,.15) transparent}
+  .twk-body::-webkit-scrollbar{width:8px}
+  .twk-body::-webkit-scrollbar-track{background:transparent;margin:2px}
+  .twk-body::-webkit-scrollbar-thumb{background:rgba(0,0,0,.15);border-radius:4px;
+    border:2px solid transparent;background-clip:content-box}
+  .twk-body::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,.25);
+    border:2px solid transparent;background-clip:content-box}
+  .twk-row{display:flex;flex-direction:column;gap:5px}
+  .twk-row-h{flex-direction:row;align-items:center;justify-content:space-between;gap:10px}
+  .twk-lbl{display:flex;justify-content:space-between;align-items:baseline;
+    color:rgba(41,38,27,.72)}
+  .twk-lbl>span:first-child{font-weight:500}
+  .twk-val{color:rgba(41,38,27,.5);font-variant-numeric:tabular-nums}
+
+  .twk-sect{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+    color:rgba(41,38,27,.45);padding:10px 0 0}
+  .twk-sect:first-child{padding-top:0}
+
+  .twk-field{appearance:none;box-sizing:border-box;width:100%;min-width:0;height:26px;padding:0 8px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:7px;
+    background:rgba(255,255,255,.6);color:inherit;font:inherit;outline:none}
+  .twk-field:focus{border-color:rgba(0,0,0,.25);background:rgba(255,255,255,.85)}
+  select.twk-field{padding-right:22px;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='rgba(0,0,0,.5)' d='M0 0h10L5 6z'/></svg>");
+    background-repeat:no-repeat;background-position:right 8px center}
+
+  .twk-slider{appearance:none;-webkit-appearance:none;width:100%;height:4px;margin:6px 0;
+    border-radius:999px;background:rgba(0,0,0,.12);outline:none}
+  .twk-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+    width:14px;height:14px;border-radius:50%;background:#fff;
+    border:.5px solid rgba(0,0,0,.12);box-shadow:0 1px 3px rgba(0,0,0,.2);cursor:default}
+  .twk-slider::-moz-range-thumb{width:14px;height:14px;border-radius:50%;
+    background:#fff;border:.5px solid rgba(0,0,0,.12);box-shadow:0 1px 3px rgba(0,0,0,.2);cursor:default}
+
+  .twk-seg{position:relative;display:flex;padding:2px;border-radius:8px;
+    background:rgba(0,0,0,.06);user-select:none}
+  .twk-seg-thumb{position:absolute;top:2px;bottom:2px;border-radius:6px;
+    background:rgba(255,255,255,.9);box-shadow:0 1px 2px rgba(0,0,0,.12);
+    transition:left .15s cubic-bezier(.3,.7,.4,1),width .15s}
+  .twk-seg.dragging .twk-seg-thumb{transition:none}
+  .twk-seg button{appearance:none;position:relative;z-index:1;flex:1;border:0;
+    background:transparent;color:inherit;font:inherit;font-weight:500;min-height:22px;
+    border-radius:6px;cursor:default;padding:4px 6px;line-height:1.2;
+    overflow-wrap:anywhere}
+
+  .twk-toggle{position:relative;width:32px;height:18px;border:0;border-radius:999px;
+    background:rgba(0,0,0,.15);transition:background .15s;cursor:default;padding:0}
+  .twk-toggle[data-on="1"]{background:#34c759}
+  .twk-toggle i{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;
+    background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s}
+  .twk-toggle[data-on="1"] i{transform:translateX(14px)}
+
+  .twk-num{display:flex;align-items:center;box-sizing:border-box;min-width:0;height:26px;padding:0 0 0 8px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:7px;background:rgba(255,255,255,.6)}
+  .twk-num-lbl{font-weight:500;color:rgba(41,38,27,.6);cursor:ew-resize;
+    user-select:none;padding-right:8px}
+  .twk-num input{flex:1;min-width:0;height:100%;border:0;background:transparent;
+    font:inherit;font-variant-numeric:tabular-nums;text-align:right;padding:0 8px 0 0;
+    outline:none;color:inherit;-moz-appearance:textfield}
+  .twk-num input::-webkit-inner-spin-button,.twk-num input::-webkit-outer-spin-button{
+    -webkit-appearance:none;margin:0}
+  .twk-num-unit{padding-right:8px;color:rgba(41,38,27,.45)}
+
+  .twk-btn{appearance:none;height:26px;padding:0 12px;border:0;border-radius:7px;
+    background:rgba(0,0,0,.78);color:#fff;font:inherit;font-weight:500;cursor:default}
+  .twk-btn:hover{background:rgba(0,0,0,.88)}
+  .twk-btn.secondary{background:rgba(0,0,0,.06);color:inherit}
+  .twk-btn.secondary:hover{background:rgba(0,0,0,.1)}
+
+  .twk-swatch{appearance:none;-webkit-appearance:none;width:56px;height:22px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:6px;padding:0;cursor:default;
+    background:transparent;flex-shrink:0}
+  .twk-swatch::-webkit-color-swatch-wrapper{padding:0}
+  .twk-swatch::-webkit-color-swatch{border:0;border-radius:5.5px}
+  .twk-swatch::-moz-color-swatch{border:0;border-radius:5.5px}
+
+  .twk-chips{display:flex;gap:6px}
+  .twk-chip{position:relative;appearance:none;flex:1;min-width:0;height:46px;
+    padding:0;border:0;border-radius:6px;overflow:hidden;cursor:default;
+    box-shadow:0 0 0 .5px rgba(0,0,0,.12),0 1px 2px rgba(0,0,0,.06);
+    transition:transform .12s cubic-bezier(.3,.7,.4,1),box-shadow .12s}
+  .twk-chip:hover{transform:translateY(-1px);
+    box-shadow:0 0 0 .5px rgba(0,0,0,.18),0 4px 10px rgba(0,0,0,.12)}
+  .twk-chip[data-on="1"]{box-shadow:0 0 0 1.5px rgba(0,0,0,.85),
+    0 2px 6px rgba(0,0,0,.15)}
+  .twk-chip>span{position:absolute;top:0;bottom:0;right:0;width:34%;
+    display:flex;flex-direction:column;box-shadow:-1px 0 0 rgba(0,0,0,.1)}
+  .twk-chip>span>i{flex:1;box-shadow:0 -1px 0 rgba(0,0,0,.1)}
+  .twk-chip>span>i:first-child{box-shadow:none}
+  .twk-chip svg{position:absolute;top:6px;left:6px;width:13px;height:13px;
+    filter:drop-shadow(0 1px 1px rgba(0,0,0,.3))}
+`;
+
+// ── useTweaks ───────────────────────────────────────────────────────────────
+// Single source of truth for tweak values. setTweak persists via the host
+// (__edit_mode_set_keys → host rewrites the EDITMODE block on disk).
+function useTweaks(defaults) {
+  const [values, setValues] = React.useState(defaults);
+  // Accepts either setTweak('key', value) or setTweak({ key: value, ... }) so a
+  // useState-style call doesn't write a "[object Object]" key into the persisted
+  // JSON block.
+  const setTweak = React.useCallback((keyOrEdits, val) => {
+    const edits = typeof keyOrEdits === 'object' && keyOrEdits !== null
+      ? keyOrEdits : { [keyOrEdits]: val };
+    setValues((prev) => ({ ...prev, ...edits }));
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits }, '*');
+    // Same-window signal so in-page listeners (deck-stage rail thumbnails)
+    // can react — the parent message only reaches the host, not peers.
+    window.dispatchEvent(new CustomEvent('tweakchange', { detail: edits }));
+  }, []);
+  return [values, setTweak];
+}
+
+// ── TweaksPanel ─────────────────────────────────────────────────────────────
+// Floating shell. Registers the protocol listener BEFORE announcing
+// availability — if the announce ran first, the host's activate could land
+// before our handler exists and the toolbar toggle would silently no-op.
+// The close button posts __edit_mode_dismissed so the host's toolbar toggle
+// flips off in lockstep; the host echoes __deactivate_edit_mode back which
+// is what actually hides the panel.
+function TweaksPanel({ title = 'Tweaks', children }) {
+  const [open, setOpen] = React.useState(false);
+  const dragRef = React.useRef(null);
+  const offsetRef = React.useRef({ x: 16, y: 16 });
+  const PAD = 16;
+
+  const clampToViewport = React.useCallback(() => {
+    const panel = dragRef.current;
+    if (!panel) return;
+    const w = panel.offsetWidth, h = panel.offsetHeight;
+    const maxRight = Math.max(PAD, window.innerWidth - w - PAD);
+    const maxBottom = Math.max(PAD, window.innerHeight - h - PAD);
+    offsetRef.current = {
+      x: Math.min(maxRight, Math.max(PAD, offsetRef.current.x)),
+      y: Math.min(maxBottom, Math.max(PAD, offsetRef.current.y)),
+    };
+    panel.style.right = offsetRef.current.x + 'px';
+    panel.style.bottom = offsetRef.current.y + 'px';
+  }, []);
+
+  React.useEffect(() => {
+    if (!open) return;
+    clampToViewport();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', clampToViewport);
+      return () => window.removeEventListener('resize', clampToViewport);
+    }
+    const ro = new ResizeObserver(clampToViewport);
+    ro.observe(document.documentElement);
+    return () => ro.disconnect();
+  }, [open, clampToViewport]);
+
+  React.useEffect(() => {
+    const onMsg = (e) => {
+      const t = e?.data?.type;
+      if (t === '__activate_edit_mode') setOpen(true);
+      else if (t === '__deactivate_edit_mode') setOpen(false);
+    };
+    window.addEventListener('message', onMsg);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  const dismiss = () => {
+    setOpen(false);
+    window.parent.postMessage({ type: '__edit_mode_dismissed' }, '*');
+  };
+
+  const onDragStart = (e) => {
+    const panel = dragRef.current;
+    if (!panel) return;
+    const r = panel.getBoundingClientRect();
+    const sx = e.clientX, sy = e.clientY;
+    const startRight = window.innerWidth - r.right;
+    const startBottom = window.innerHeight - r.bottom;
+    const move = (ev) => {
+      offsetRef.current = {
+        x: startRight - (ev.clientX - sx),
+        y: startBottom - (ev.clientY - sy),
+      };
+      clampToViewport();
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  };
+
+  if (!open) return null;
+  return (
+    <>
+      <style>{__TWEAKS_STYLE}</style>
+      <div ref={dragRef} className="twk-panel" data-omelette-chrome=""
+           style={{ right: offsetRef.current.x, bottom: offsetRef.current.y }}>
+        <div className="twk-hd" onMouseDown={onDragStart}>
+          <b>{title}</b>
+          <button className="twk-x" aria-label="Close tweaks"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={dismiss}>✕</button>
+        </div>
+        <div className="twk-body">
+          {children}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── Layout helpers ──────────────────────────────────────────────────────────
+
+function TweakSection({ label, children }) {
+  return (
+    <>
+      <div className="twk-sect">{label}</div>
+      {children}
+    </>
+  );
+}
+
+function TweakRow({ label, value, children, inline = false }) {
+  return (
+    <div className={inline ? 'twk-row twk-row-h' : 'twk-row'}>
+      <div className="twk-lbl">
+        <span>{label}</span>
+        {value != null && <span className="twk-val">{value}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// ── Controls ────────────────────────────────────────────────────────────────
+
+function TweakSlider({ label, value, min = 0, max = 100, step = 1, unit = '', onChange }) {
+  return (
+    <TweakRow label={label} value={`${value}${unit}`}>
+      <input type="range" className="twk-slider" min={min} max={max} step={step}
+             value={value} onChange={(e) => onChange(Number(e.target.value))} />
+    </TweakRow>
+  );
+}
+
+function TweakToggle({ label, value, onChange }) {
+  return (
+    <div className="twk-row twk-row-h">
+      <div className="twk-lbl"><span>{label}</span></div>
+      <button type="button" className="twk-toggle" data-on={value ? '1' : '0'}
+              role="switch" aria-checked={!!value}
+              onClick={() => onChange(!value)}><i /></button>
+    </div>
+  );
+}
+
+function TweakRadio({ label, value, options, onChange }) {
+  const trackRef = React.useRef(null);
+  const [dragging, setDragging] = React.useState(false);
+  // The active value is read by pointer-move handlers attached for the lifetime
+  // of a drag — ref it so a stale closure doesn't fire onChange for every move.
+  const valueRef = React.useRef(value);
+  valueRef.current = value;
+
+  // Segments wrap mid-word once per-segment width runs out. The track is
+  // ~248px (280 panel − 28 body pad − 4 seg pad), each button loses 12px
+  // to its own padding, and 11.5px system-ui averages ~6.3px/char — so 2
+  // options fit ~16 chars each, 3 fit ~10. Past that (or >3 options), fall
+  // back to a dropdown rather than wrap.
+  const labelLen = (o) => String(typeof o === 'object' ? o.label : o).length;
+  const maxLen = options.reduce((m, o) => Math.max(m, labelLen(o)), 0);
+  const fitsAsSegments = maxLen <= ({ 2: 16, 3: 10 }[options.length] ?? 0);
+  if (!fitsAsSegments) {
+    // <select> emits strings — map back to the original option value so the
+    // fallback stays type-preserving (numbers, booleans) like the segment path.
+    const resolve = (s) => {
+      const m = options.find((o) => String(typeof o === 'object' ? o.value : o) === s);
+      return m === undefined ? s : typeof m === 'object' ? m.value : m;
+    };
+    return <TweakSelect label={label} value={value} options={options}
+                        onChange={(s) => onChange(resolve(s))} />;
+  }
+  const opts = options.map((o) => (typeof o === 'object' ? o : { value: o, label: o }));
+  const idx = Math.max(0, opts.findIndex((o) => o.value === value));
+  const n = opts.length;
+
+  const segAt = (clientX) => {
+    const r = trackRef.current.getBoundingClientRect();
+    const inner = r.width - 4;
+    const i = Math.floor(((clientX - r.left - 2) / inner) * n);
+    return opts[Math.max(0, Math.min(n - 1, i))].value;
+  };
+
+  const onPointerDown = (e) => {
+    setDragging(true);
+    const v0 = segAt(e.clientX);
+    if (v0 !== valueRef.current) onChange(v0);
+    const move = (ev) => {
+      if (!trackRef.current) return;
+      const v = segAt(ev.clientX);
+      if (v !== valueRef.current) onChange(v);
+    };
+    const up = () => {
+      setDragging(false);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  return (
+    <TweakRow label={label}>
+      <div ref={trackRef} role="radiogroup" onPointerDown={onPointerDown}
+           className={dragging ? 'twk-seg dragging' : 'twk-seg'}>
+        <div className="twk-seg-thumb"
+             style={{ left: `calc(2px + ${idx} * (100% - 4px) / ${n})`,
+                      width: `calc((100% - 4px) / ${n})` }} />
+        {opts.map((o) => (
+          <button key={o.value} type="button" role="radio" aria-checked={o.value === value}>
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </TweakRow>
+  );
+}
+
+function TweakSelect({ label, value, options, onChange }) {
+  return (
+    <TweakRow label={label}>
+      <select className="twk-field" value={value} onChange={(e) => onChange(e.target.value)}>
+        {options.map((o) => {
+          const v = typeof o === 'object' ? o.value : o;
+          const l = typeof o === 'object' ? o.label : o;
+          return <option key={v} value={v}>{l}</option>;
+        })}
+      </select>
+    </TweakRow>
+  );
+}
+
+function TweakText({ label, value, placeholder, onChange }) {
+  return (
+    <TweakRow label={label}>
+      <input className="twk-field" type="text" value={value} placeholder={placeholder}
+             onChange={(e) => onChange(e.target.value)} />
+    </TweakRow>
+  );
+}
+
+function TweakNumber({ label, value, min, max, step = 1, unit = '', onChange }) {
+  const clamp = (n) => {
+    if (min != null && n < min) return min;
+    if (max != null && n > max) return max;
+    return n;
+  };
+  const startRef = React.useRef({ x: 0, val: 0 });
+  const onScrubStart = (e) => {
+    e.preventDefault();
+    startRef.current = { x: e.clientX, val: value };
+    const decimals = (String(step).split('.')[1] || '').length;
+    const move = (ev) => {
+      const dx = ev.clientX - startRef.current.x;
+      const raw = startRef.current.val + dx * step;
+      const snapped = Math.round(raw / step) * step;
+      onChange(clamp(Number(snapped.toFixed(decimals))));
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  return (
+    <div className="twk-num">
+      <span className="twk-num-lbl" onPointerDown={onScrubStart}>{label}</span>
+      <input type="number" value={value} min={min} max={max} step={step}
+             onChange={(e) => onChange(clamp(Number(e.target.value)))} />
+      {unit && <span className="twk-num-unit">{unit}</span>}
+    </div>
+  );
+}
+
+// Relative-luminance contrast pick — checkmarks drawn over a swatch need to
+// read on both #111 and #fafafa without per-option configuration. Hex input
+// only (#rgb / #rrggbb); named or rgb()/hsl() colors fall through to "light".
+function __twkIsLight(hex) {
+  const h = String(hex).replace('#', '');
+  const x = h.length === 3 ? h.replace(/./g, (c) => c + c) : h.padEnd(6, '0');
+  const n = parseInt(x.slice(0, 6), 16);
+  if (Number.isNaN(n)) return true;
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return r * 299 + g * 587 + b * 114 > 148000;
+}
+
+const __TwkCheck = ({ light }) => (
+  <svg viewBox="0 0 14 14" aria-hidden="true">
+    <path d="M3 7.2 5.8 10 11 4.2" fill="none" strokeWidth="2.2"
+          strokeLinecap="round" strokeLinejoin="round"
+          stroke={light ? 'rgba(0,0,0,.78)' : '#fff'} />
+  </svg>
+);
+
+// TweakColor — curated color/palette picker. Each option is either a single
+// hex string or an array of 1-5 hex strings; the card adapts — a lone color
+// renders solid, a palette renders colors[0] as the hero (left ~2/3) with the
+// rest stacked in a sharp column on the right. onChange emits the
+// option in the shape it was passed (string stays string, array stays array).
+// Without options it falls back to the native color input for back-compat.
+function TweakColor({ label, value, options, onChange }) {
+  if (!options || !options.length) {
+    return (
+      <div className="twk-row twk-row-h">
+        <div className="twk-lbl"><span>{label}</span></div>
+        <input type="color" className="twk-swatch" value={value}
+               onChange={(e) => onChange(e.target.value)} />
+      </div>
+    );
+  }
+  // Native <input type=color> emits lowercase hex per the HTML spec, so
+  // compare case-insensitively. String() guards JSON.stringify(undefined),
+  // which returns the primitive undefined (no .toLowerCase).
+  const key = (o) => String(JSON.stringify(o)).toLowerCase();
+  const cur = key(value);
+  return (
+    <TweakRow label={label}>
+      <div className="twk-chips" role="radiogroup">
+        {options.map((o, i) => {
+          const colors = Array.isArray(o) ? o : [o];
+          const [hero, ...rest] = colors;
+          const sup = rest.slice(0, 4);
+          const on = key(o) === cur;
+          return (
+            <button key={i} type="button" className="twk-chip" role="radio"
+                    aria-checked={on} data-on={on ? '1' : '0'}
+                    aria-label={colors.join(', ')} title={colors.join(' · ')}
+                    style={{ background: hero }}
+                    onClick={() => onChange(o)}>
+              {sup.length > 0 && (
+                <span>
+                  {sup.map((c, j) => <i key={j} style={{ background: c }} />)}
+                </span>
+              )}
+              {on && <__TwkCheck light={__twkIsLight(hero)} />}
+            </button>
+          );
+        })}
+      </div>
+    </TweakRow>
+  );
+}
+
+function TweakButton({ label, onClick, secondary = false }) {
+  return (
+    <button type="button" className={secondary ? 'twk-btn secondary' : 'twk-btn'}
+            onClick={onClick}>{label}</button>
+  );
+}
+
+Object.assign(window, {
+  useTweaks, TweaksPanel, TweakSection, TweakRow,
+  TweakSlider, TweakToggle, TweakRadio, TweakSelect,
+  TweakText, TweakNumber, TweakColor, TweakButton,
+});
+
+</script>
+<script type="text/babel" data-file="icons.jsx">
+/* icons.jsx — simple line-icon set (Lucide-style single/double path) */
+const Svg = ({ s = 22, sw = 2, children, ...p }) => (
+  <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" {...p}>{children}</svg>
+);
+
+const I = {
+  grid: (p) => <Svg {...p}><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/></Svg>,
+  bulb: (p) => <Svg {...p}><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1v.2h6v-.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2Z"/></Svg>,
+  doc: (p) => <Svg {...p}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h6"/></Svg>,
+  folder: (p) => <Svg {...p}><path d="M4 5a2 2 0 0 1 2-2h3.2a2 2 0 0 1 1.6.8L12 5.5h6a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H4Z"/></Svg>,
+  target: (p) => <Svg {...p}><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></Svg>,
+  gear: (p) => <Svg {...p}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 0 1-4 0v-.1a1.6 1.6 0 0 0-2.7-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 4.6 15H4.5a2 2 0 0 1 0-4h.1a1.6 1.6 0 0 0 1.1-2.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 2.7-1.1V4.5a2 2 0 0 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8 1.6 1.6 0 0 0 1.5 1h.1a2 2 0 0 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1Z"/></Svg>,
+  search: (p) => <Svg {...p}><circle cx="11" cy="11" r="7"/><path d="m21 21-3.5-3.5"/></Svg>,
+  bolt: (p) => <Svg {...p}><path d="M13 2 4.5 13.5a.7.7 0 0 0 .5 1.1H11l-1 7.4 8.5-11.5a.7.7 0 0 0-.5-1.1H12Z"/></Svg>,
+  clock: (p) => <Svg {...p}><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></Svg>,
+  shield: (p) => <Svg {...p}><path d="M12 2 4 5v6c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V5Z"/></Svg>,
+  download: (p) => <Svg {...p}><path d="M12 3v12m0 0 4.5-4.5M12 15l-4.5-4.5"/><path d="M4 20h16"/></Svg>,
+  upload: (p) => <Svg {...p}><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M4 20h16"/></Svg>,
+  plus: (p) => <Svg {...p}><path d="M12 5v14M5 12h14"/></Svg>,
+  chevR: (p) => <Svg {...p}><path d="m9 6 6 6-6 6"/></Svg>,
+  chevL: (p) => <Svg {...p}><path d="m15 6-6 6 6 6"/></Svg>,
+  arrowR: (p) => <Svg {...p}><path d="M4 12h16m0 0-6-6m6 6-6 6"/></Svg>,
+  check: (p) => <Svg {...p}><path d="M20 6 9 17l-5-5"/></Svg>,
+  checkCircle: (p) => <Svg {...p}><circle cx="12" cy="12" r="9"/><path d="m8.5 12 2.5 2.5L16 9"/></Svg>,
+  alert: (p) => <Svg {...p}><path d="M12 9v4m0 4h.01"/><path d="M10.3 3.9 2 18.4A2 2 0 0 0 3.7 21.5h16.6A2 2 0 0 0 22 18.4L13.7 3.9a2 2 0 0 0-3.4 0Z"/></Svg>,
+  menu: (p) => <Svg {...p}><path d="M3 6h18M3 12h18M3 18h18"/></Svg>,
+  x: (p) => <Svg {...p}><path d="M6 6l12 12M18 6 6 18"/></Svg>,
+  bell: (p) => <Svg {...p}><path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/><path d="M10.5 21a1.8 1.8 0 0 0 3 0"/></Svg>,
+  filter: (p) => <Svg {...p}><path d="M3 5h18l-7 8v6l-4-2v-4Z"/></Svg>,
+  dots: (p) => <Svg {...p}><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></Svg>,
+  receipt: (p) => <Svg {...p}><path d="M5 3v18l2-1.3L9 21l2-1.3L13 21l2-1.3L17 21l2-1.3V3l-2 1.3L15 3l-2 1.3L11 3 9 4.3 7 3Z"/><path d="M8.5 8h7M8.5 12h7"/></Svg>,
+  card: (p) => <Svg {...p}><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3 10h18"/></Svg>,
+  user: (p) => <Svg {...p}><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></Svg>,
+  logout: (p) => <Svg {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/></Svg>,
+  eye: (p) => <Svg {...p}><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></Svg>,
+  sparkles: (p) => <Svg {...p}><path d="M12 3l1.7 4.6L18 9l-4.3 1.4L12 15l-1.7-4.6L6 9l4.3-1.4Z"/><path d="M19 14l.8 2.2L22 17l-2.2.8L19 20l-.8-2.2L16 17l2.2-.8Z"/></Svg>,
+  trend: (p) => <Svg {...p}><path d="M3 17l6-6 4 4 7-7"/><path d="M17 7h4v4"/></Svg>,
+  building: (p) => <Svg {...p}><rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M9 7h.01M14 7h.01M9 11h.01M14 11h.01M9 15h.01M14 15h.01M10 21v-3h4v3"/></Svg>,
+  calendar: (p) => <Svg {...p}><rect x="3" y="4.5" width="18" height="17" rx="2.5"/><path d="M3 9h18M8 2.5v4M16 2.5v4"/></Svg>,
+  pin: (p) => <Svg {...p}><path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11Z"/><circle cx="12" cy="10" r="2.5"/></Svg>,
+  scan: (p) => <Svg {...p}><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16M4 12h16"/></Svg>,
+  moon: (p) => <Svg {...p}><path d="M21 12.8A8 8 0 1 1 11.2 3a6.2 6.2 0 0 0 9.8 9.8Z"/></Svg>,
+};
+
+window.Icon = ({ name, ...p }) => { const C = I[name] || I.doc; return <C {...p} />; };
+window.I = I;
+
+</script>
+<script type="text/babel" data-file="data.jsx">
+/* data.jsx — mock domain data for the AI Consultant web app (Russian UI) */
+
+const DOC_TYPES = [
+  { key: 'contract', label: 'Договоры', icon: 'doc', tint: 'indigo', count: 6, pct: 40 },
+  { key: 'report',   label: 'Отчёты',   icon: 'receipt', tint: '', count: 4, pct: 27 },
+  { key: 'license',  label: 'Лицензии', icon: 'card', tint: 'green', count: 3, pct: 20 },
+  { key: 'other',    label: 'Прочие',   icon: 'doc', tint: 'amber', count: 2, pct: 13 },
+];
+
+const RISKS = [
+  { label: 'Высокий', count: 3, color: 'var(--red)',   pct: 25 },
+  { label: 'Средний', count: 5, color: 'var(--amber)', pct: 42 },
+  { label: 'Низкий',  count: 7, color: 'var(--green)', pct: 70 },
+];
+
+const INSIGHTS = [
+  {
+    id: 'i1', kind: 'Возможность', kindClass: 'amber', icon: 'clock', tile: 'amber',
+    accent: 'var(--amber)', tag: 'ИИ-рекомендация',
+    title: 'Оптимизация затрат на поставки',
+    body: 'Анализ договоров поставки показал возможность снижения расходов на 8% при консолидации заказов.',
+    meta: 'Договоры · 3 документа', impact: 'Экономия ≈ 240 000 ₽ / квартал',
+  },
+  {
+    id: 'i2', kind: 'Срочно', kindClass: 'red', icon: 'alert', tile: 'red',
+    accent: 'var(--red)', tag: 'Требует внимания',
+    title: 'Истекает срок лицензии',
+    body: 'Лицензия на ПО истекает через 14 дней. Рекомендуется продлить, чтобы избежать простоя.',
+    meta: 'Лицензии · 1 документ', impact: 'Дедлайн: 14 июня 2026',
+  },
+  {
+    id: 'i3', kind: 'Важно', kindClass: 'amber', icon: 'shield', tile: 'indigo',
+    accent: 'var(--indigo)', tag: 'Аудит',
+    title: 'Несоответствие в отчётности',
+    body: 'В квартальном отчёте обнаружены расхождения по статье «Прочие расходы». Требуется проверка.',
+    meta: 'Отчёты · 2 документа', impact: 'Риск: средний',
+  },
+  {
+    id: 'i4', kind: 'К сведению', kindClass: 'indigo', icon: 'trend', tile: 'green',
+    accent: 'var(--green)', tag: 'Аналитика',
+    title: 'Рост выручки по сегменту B2B',
+    body: 'По данным за квартал сегмент B2B вырос на 12%. Стоит усилить направление в плане развития.',
+    meta: 'Отчёты · 4 документа', impact: 'Тренд: положительный',
+  },
+];
+
+const FOLDERS = [
+  { id: 'f1', name: 'Договоры 2026', icon: 'folder', count: 6, tint: 'indigo', plan: 'Снижение издержек' },
+  { id: 'f2', name: 'Финансовая отчётность', icon: 'folder', count: 4, tint: '', plan: 'Рост выручки' },
+  { id: 'f3', name: 'Лицензии и разрешения', icon: 'folder', count: 3, tint: 'green', plan: null },
+  { id: 'f4', name: 'Кадровые документы', icon: 'folder', count: 5, tint: 'amber', plan: null },
+];
+
+const STATUS = {
+  processed:  { label: 'Обработан',   color: 'var(--green)', badge: 'green' },
+  processing: { label: 'Обработка',   color: 'var(--amber)', badge: 'amber' },
+  uploaded:   { label: 'Загружен',    color: 'var(--indigo)', badge: 'indigo' },
+  failed:     { label: 'Ошибка',      color: 'var(--red)',   badge: 'red' },
+};
+
+const DOCS = [
+  { id: 'd1', title: 'Договор поставки №472-А', type: 'Договор', folder: 'Договоры 2026', status: 'processed', risk: 'Средний', riskColor: 'var(--amber)', date: '12 мая 2026', org: 'ООО «Орбита»', size: '2.4 МБ', pages: 14 },
+  { id: 'd2', title: 'Квартальный отчёт Q1 2026', type: 'Отчёт', folder: 'Финансовая отчётность', status: 'processed', risk: 'Высокий', riskColor: 'var(--red)', date: '8 мая 2026', org: 'Внутренний', size: '5.1 МБ', pages: 32 },
+  { id: 'd3', title: 'Лицензия на ПО (Enterprise)', type: 'Лицензия', folder: 'Лицензии и разрешения', status: 'processing', risk: '—', riskColor: 'var(--muted)', date: '14 мая 2026', org: 'SoftLine', size: '0.8 МБ', pages: 4 },
+  { id: 'd4', title: 'Акт сверки взаиморасчётов', type: 'Договор', folder: 'Договоры 2026', status: 'uploaded', risk: '—', riskColor: 'var(--muted)', date: '15 мая 2026', org: 'ООО «Орбита»', size: '1.1 МБ', pages: 6 },
+  { id: 'd5', title: 'Трудовой договор №118', type: 'Прочее', folder: 'Кадровые документы', status: 'processed', risk: 'Низкий', riskColor: 'var(--green)', date: '2 мая 2026', org: 'Внутренний', size: '0.6 МБ', pages: 8 },
+  { id: 'd6', title: 'Отчёт о движении средств', type: 'Отчёт', folder: 'Финансовая отчётность', status: 'failed', risk: '—', riskColor: 'var(--muted)', date: '11 мая 2026', org: 'Внутренний', size: '3.2 МБ', pages: 20 },
+];
+
+// extracted analysis for detail screen (keyed by doc id; default fallback)
+const ANALYSIS = {
+  d1: {
+    summary: 'Договор поставки на 12 месяцев с автоматической пролонгацией. Выявлен пункт о фиксированной цене без индексации — возможность экономии при пересмотре.',
+    fields: [
+      { k: 'Контрагент', v: 'ООО «Орбита»' },
+      { k: 'Сумма договора', v: '3 200 000 ₽' },
+      { k: 'Срок действия', v: '01.05.2026 – 30.04.2027' },
+      { k: 'Условия оплаты', v: 'Постоплата 30 дней' },
+      { k: 'Штрафные санкции', v: '0,1% за день просрочки' },
+    ],
+    checks: [
+      { label: 'Реквизиты сторон корректны', ok: true },
+      { label: 'Срок действия указан', ok: true },
+      { label: 'Отсутствует пункт об индексации цены', ok: false },
+      { label: 'Условия расторжения определены', ok: true },
+    ],
+    risks: [
+      { label: 'Ценовой риск (нет индексации)', level: 'Средний', color: 'var(--amber)' },
+      { label: 'Риск автопролонгации', level: 'Низкий', color: 'var(--green)' },
+    ],
+  },
+};
+
+const PLANS = [
+  {
+    id: 'p1', title: 'Снижение операционных издержек', tint: 'indigo', icon: 'trend',
+    progress: 64, status: 'В работе', period: 'Q2 2026',
+    goals: [
+      { id: 'g1', title: 'Пересмотр договоров поставки', done: true, items: 4, doneItems: 4 },
+      { id: 'g2', title: 'Консолидация заказов', done: false, items: 5, doneItems: 3 },
+      { id: 'g3', title: 'Аудит лицензий', done: false, items: 3, doneItems: 1 },
+    ],
+  },
+  {
+    id: 'p2', title: 'Рост выручки B2B', tint: 'green', icon: 'target',
+    progress: 38, status: 'В работе', period: 'H1 2026',
+    goals: [
+      { id: 'g4', title: 'Анализ ключевых клиентов', done: true, items: 3, doneItems: 3 },
+      { id: 'g5', title: 'Запуск партнёрской программы', done: false, items: 6, doneItems: 1 },
+    ],
+  },
+  {
+    id: 'p3', title: 'Соответствие требованиям', tint: 'amber', icon: 'shield',
+    progress: 80, status: 'Почти готово', period: 'Q2 2026',
+    goals: [
+      { id: 'g6', title: 'Обновление лицензий', done: false, items: 2, doneItems: 1 },
+      { id: 'g7', title: 'Проверка отчётности', done: true, items: 4, doneItems: 4 },
+    ],
+  },
+];
+
+const NAV = [
+  { key: 'overview',  label: 'Обзор',     icon: 'grid' },
+  { key: 'insights',  label: 'Инсайты',   icon: 'bulb', dot: 2 },
+  { key: 'documents', label: 'Документы', icon: 'doc' },
+  { key: 'plans',     label: 'Планы',     icon: 'target' },
+  { key: 'settings',  label: 'Настройки', icon: 'gear' },
+];
+
+Object.assign(window, { DOC_TYPES, RISKS, INSIGHTS, FOLDERS, DOCS, STATUS, ANALYSIS, PLANS, NAV });
+
+</script>
+<script type="text/babel" data-file="ui.jsx">
+/* ui.jsx — shared UI primitives */
+const { useState, useEffect, useRef } = React;
+
+const Card = ({ className = '', tap, children, ...p }) => (
+  <div className={`card ${tap ? 'tap' : ''} ${className}`} {...p}>{children}</div>
+);
+
+const SectionLabel = ({ children, style }) => (
+  <div className="section-label" style={style}>{children}</div>
+);
+
+const IconTile = ({ icon, tint = '', size = '', s }) => (
+  <div className={`icon-tile ${size} ${tint}`}>
+    <Icon name={icon} s={s || (size === 'lg' ? 26 : size === 'sm' ? 19 : 22)} sw={2} />
+  </div>
+);
+
+const Badge = ({ children, tone = '', icon }) => (
+  <span className={`badge ${tone}`}>{icon && <Icon name={icon} s={14} sw={2.4} />}{children}</span>
+);
+
+const Btn = ({ variant = 'primary', size = '', icon, iconR, children, className = '', ...p }) => (
+  <button className={`btn btn-${variant} ${size} ${className}`} {...p}>
+    {icon && <Icon name={icon} s={size === 'sm' ? 16 : 18} sw={2.2} />}
+    {children}
+    {iconR && <Icon name={iconR} s={size === 'sm' ? 16 : 18} sw={2.2} />}
+  </button>
+);
+
+const Avatar = ({ name = 'АК', sm }) => (
+  <div className={`avatar ${sm ? 'sm' : ''}`}>{name}</div>
+);
+
+const Progress = ({ pct, color = 'var(--accent-2)', h = 9 }) => (
+  <div className="track" style={{ height: h }}>
+    <div className="fill" style={{ width: `${pct}%`, background: color }} />
+  </div>
+);
+
+const StatusPill = ({ status }) => {
+  const s = STATUS[status];
+  return <span className="status" style={{ color: s.color }}><span className="dot" style={{ background: s.color }} />{s.label}</span>;
+};
+
+// A ring / donut progress using conic-gradient
+const Ring = ({ pct, size = 92, color = 'var(--accent-2)', track = 'var(--surface-inset)', children }) => (
+  <div style={{ width: size, height: size, borderRadius: '50%', display: 'grid', placeItems: 'center',
+    background: `conic-gradient(${color} ${pct * 3.6}deg, ${track} 0)` }}>
+    <div style={{ width: size - 18, height: size - 18, borderRadius: '50%', background: 'var(--surface)',
+      display: 'grid', placeItems: 'center', textAlign: 'center' }}>{children}</div>
+  </div>
+);
+
+// striped image placeholder
+const Placeholder = ({ label = 'превью документа', h = 180, r = 'var(--r-md)' }) => (
+  <div style={{ height: h, borderRadius: r, display: 'grid', placeItems: 'center',
+    background: 'repeating-linear-gradient(135deg, var(--surface-inset) 0 12px, var(--surface-2) 12px 24px)',
+    border: '1px solid var(--line)', color: 'var(--muted)' }}>
+    <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12, letterSpacing: '.04em' }}>{label}</span>
+  </div>
+);
+
+const Modal = ({ onClose, children, wide }) => {
+  useEffect(() => {
+    const h = (e) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, []);
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" style={wide ? { width: 'min(720px, 100%)' } : null} onClick={(e) => e.stopPropagation()}>
+        {children}
+      </div>
+    </div>
+  );
+};
+
+Object.assign(window, { Card, SectionLabel, IconTile, Badge, Btn, Avatar, Progress, StatusPill, Ring, Placeholder, Modal });
+
+</script>
+<script type="text/babel" data-file="screens-home.jsx">
+/* screens-home.jsx — Обзор (Overview) + Инсайты (Insights) */
+const { useState, useEffect } = React;
+
+function Hero({ icon, title, sub, children }) {
+  return (
+    <div className="hero">
+      <div className="blob a" /><div className="blob b" />
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 20 }}>
+        <div className="frost"><Icon name={icon} s={30} sw={2} /></div>
+        <div>
+          <h2 className="display" style={{ fontSize: 30, fontWeight: 800, letterSpacing: '-.02em' }}>{title}</h2>
+          <div style={{ fontSize: 15, color: 'var(--on-grad)', fontWeight: 500, marginTop: 2 }}>{sub}</div>
+        </div>
+        <div style={{ marginLeft: 'auto' }}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Обзор ---------------- */
+function OverviewScreen({ go }) {
+  const overall = { color: 'var(--amber)', label: 'Требует внимания' };
+  return (
+    <div className="view stack">
+      <Hero icon="grid" title="Обзор" sub="Общая картина вашего бизнеса">
+        <div className="hide-sm"><Ring pct={80} size={92} color="rgba(255,255,255,.95)" track="rgba(255,255,255,.25)">
+          <div><div style={{ fontFamily: 'Manrope', fontWeight: 800, fontSize: 20, color: 'var(--ink)' }}>80%</div>
+          <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 600 }}>готово</div></div>
+        </Ring></div>
+      </Hero>
+
+      {/* KPI cards */}
+      <div className="grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+        <Card className="kpi-grad" style={{ background: 'var(--brand-grad)', color: 'white', border: 'none', position: 'relative', overflow: 'hidden' }}>
+          <div className="blob" style={{ position: 'absolute', width: 130, height: 130, borderRadius: '50%', background: 'rgba(255,255,255,.12)', top: -50, right: -30 }} />
+          <div style={{ position: 'relative' }}>
+            <div className="stat-num" style={{ fontSize: 40 }}>15</div>
+            <div style={{ fontWeight: 600, marginTop: 4 }}>Всего документов</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 18, fontSize: 13, fontWeight: 600, color: 'var(--on-grad)' }}>
+              <Icon name="arrowR" s={16} /> +3 в этом месяце
+            </div>
+          </div>
+        </Card>
+        <Card>
+          <div className="stat-num" style={{ fontSize: 40 }}>12</div>
+          <div style={{ fontWeight: 600, marginTop: 4, color: 'var(--ink-2)' }}>Проанализировано</div>
+          <div className="status" style={{ color: 'var(--green)', marginTop: 18 }}><Icon name="checkCircle" s={17} /> 80% готово</div>
+        </Card>
+        <Card>
+          <IconTile icon="bulb" tint="amber" size="sm" />
+          <div className="stat-num" style={{ fontSize: 34, marginTop: 12 }}>4</div>
+          <div style={{ fontWeight: 600, color: 'var(--ink-2)' }}>Новых инсайта</div>
+        </Card>
+        <Card>
+          <IconTile icon="shield" tint="red" size="sm" />
+          <div className="stat-num" style={{ fontSize: 34, marginTop: 12 }}>3</div>
+          <div style={{ fontWeight: 600, color: 'var(--ink-2)' }}>Высоких риска</div>
+        </Card>
+      </div>
+
+      <div className="grid" style={{ gridTemplateColumns: '1.3fr 1fr', alignItems: 'start' }}>
+        {/* doc types */}
+        <Card>
+          <SectionLabel>Типы документов</SectionLabel>
+          <div style={{ marginTop: 14 }}>
+            {DOC_TYPES.map((t) => (
+              <div className="lrow" key={t.key}>
+                <IconTile icon={t.icon} tint={t.tint} size="sm" />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700 }}>{t.label}</div>
+                  <div style={{ fontSize: 13, color: 'var(--muted)' }}>{t.count} документа</div>
+                </div>
+                <div style={{ width: 120 }} className="hide-sm"><Progress pct={t.pct} h={7} /></div>
+                <div className="stat-num" style={{ fontSize: 22, width: 54, textAlign: 'right' }}>{t.pct}%</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* risks */}
+        <Card>
+          <SectionLabel>Уровень рисков</SectionLabel>
+          <div className="stack" style={{ gap: 16, marginTop: 16 }}>
+            {RISKS.map((r) => (
+              <div key={r.label}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <span style={{ fontFamily: 'Manrope', fontWeight: 800, fontSize: 17 }}>{r.label}</span>
+                  <span className="stat-num" style={{ fontSize: 19, color: r.color }}>{r.count}</span>
+                </div>
+                <Progress pct={r.pct} color={r.color} />
+              </div>
+            ))}
+          </div>
+          <div style={{ borderTop: '1px solid var(--line)', marginTop: 18, paddingTop: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ color: 'var(--muted)', fontWeight: 500 }}>Общий статус</span>
+            <span className="dot" style={{ width: 9, height: 9, borderRadius: '50%', background: overall.color }} />
+            <span style={{ fontFamily: 'Manrope', fontWeight: 800, marginLeft: 'auto', color: 'var(--ink)' }}>{overall.label}</span>
+          </div>
+        </Card>
+      </div>
+
+      {/* recommended actions */}
+      <Card>
+        <SectionLabel>Рекомендуемые действия</SectionLabel>
+        <div className="grid" style={{ gridTemplateColumns: 'repeat(3,1fr)', marginTop: 14 }}>
+          {[
+            { icon: 'upload', tint: 'indigo', t: 'Загрузить новый документ', s: 'Добавьте файл для анализа', go: 'documents' },
+            { icon: 'bulb', tint: 'amber', t: 'Решить срочные вопросы (2)', s: 'Просмотрите инсайты', go: 'insights' },
+            { icon: 'target', tint: 'green', t: 'Обновить планы', s: '3 активных плана', go: 'plans' },
+          ].map((a) => (
+            <div key={a.t} className="card tap flat" style={{ background: 'var(--surface-2)', display: 'flex', alignItems: 'center', gap: 14 }} onClick={() => go(a.go)}>
+              <IconTile icon={a.icon} tint={a.tint} size="sm" />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 14.5 }}>{a.t}</div>
+                <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>{a.s}</div>
+              </div>
+              <Icon name="chevR" s={18} style={{ color: 'var(--muted-2)' }} />
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+/* ---------------- Инсайты ---------------- */
+function InsightCard({ ins, onOpen }) {
+  return (
+    <Card tap className="view" style={{ borderLeft: `5px solid ${ins.accent}`, paddingLeft: 'calc(var(--pad-card) - 1px)' }} onClick={() => onOpen(ins)}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+        <IconTile icon={ins.icon} tint={ins.tile} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span className="chip"><Icon name="bolt" s={14} sw={2.6} />{ins.tag}</span>
+            <Badge tone={ins.kindClass}>{ins.kind}</Badge>
+          </div>
+          <h3 className="display" style={{ fontSize: 21, fontWeight: 800, letterSpacing: '-.02em', marginTop: 13, textWrap: 'pretty' }}>{ins.title}</h3>
+          <p style={{ color: 'var(--ink-2)', marginTop: 7, maxWidth: 620, textWrap: 'pretty' }}>{ins.body}</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 16, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12.5, color: 'var(--muted)', fontWeight: 600 }}>{ins.meta}</span>
+            <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 7, color: ins.accent, fontWeight: 700, fontSize: 13 }}>
+              <Icon name="sparkles" s={16} />{ins.impact}
+            </span>
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function InsightsScreen() {
+  const [open, setOpen] = useState(null);
+  const [filter, setFilter] = useState('Все');
+  const filters = ['Все', 'Срочно', 'Важно', 'Возможность'];
+  const list = filter === 'Все' ? INSIGHTS : INSIGHTS.filter((i) => i.kind === filter);
+  return (
+    <div className="view stack">
+      <Hero icon="bulb" title="Инсайты" sub="ИИ-рекомендации для вашего бизнеса" />
+      <div className="grid" style={{ gridTemplateColumns: 'repeat(3,1fr)' }}>
+        {[{ n: 2, l: 'Срочно', c: 'var(--red)' }, { n: 2, l: 'Важно', c: 'var(--amber)' }, { n: 1, l: 'К сведению', c: 'var(--indigo)' }].map((s) => (
+          <Card key={s.l} style={{ textAlign: 'center' }}>
+            <div className="stat-num" style={{ fontSize: 34, color: s.c }}>{s.n}</div>
+            <div style={{ fontWeight: 600, color: 'var(--ink-2)', marginTop: 4 }}>{s.l}</div>
+          </Card>
+        ))}
+      </div>
+      <div className="seg" style={{ alignSelf: 'flex-start' }}>
+        {filters.map((f) => <button key={f} className={filter === f ? 'on' : ''} onClick={() => setFilter(f)}>{f}</button>)}
+      </div>
+      <div className="stack">
+        {list.map((ins) => <InsightCard key={ins.id} ins={ins} onOpen={setOpen} />)}
+      </div>
+
+      {open && (
+        <Modal onClose={() => setOpen(null)} wide>
+          <div style={{ background: 'var(--brand-grad)', color: 'white', padding: '24px 26px', borderRadius: 'var(--r-xl) var(--r-xl) 0 0', position: 'relative', overflow: 'hidden' }}>
+            <div className="blob" style={{ position: 'absolute', width: 160, height: 160, borderRadius: '50%', background: 'rgba(255,255,255,.12)', top: -70, right: -30 }} />
+            <div style={{ position: 'relative', display: 'flex', gap: 16, alignItems: 'center' }}>
+              <div className="frost"><Icon name={open.icon} s={28} /></div>
+              <div><Badge tone="ghost">{open.kind}</Badge><h3 className="display" style={{ fontSize: 23, fontWeight: 800, marginTop: 8 }}>{open.title}</h3></div>
+              <button className="btn icon" onClick={() => setOpen(null)} style={{ marginLeft: 'auto', background: 'rgba(255,255,255,.18)', color: 'white' }}><Icon name="x" s={18} /></button>
+            </div>
+          </div>
+          <div style={{ padding: 26 }} className="stack">
+            <p style={{ fontSize: 15.5, color: 'var(--ink-2)', textWrap: 'pretty' }}>{open.body}</p>
+            <div className="card flat" style={{ background: 'var(--brand-soft)', display: 'flex', alignItems: 'center', gap: 12, color: 'var(--brand-ink)' }}>
+              <Icon name="sparkles" s={20} /><span style={{ fontWeight: 700 }}>{open.impact}</span>
+            </div>
+            <div>
+              <SectionLabel>Что предлагает ИИ</SectionLabel>
+              <div className="stack" style={{ gap: 10, marginTop: 12 }}>
+                {['Проанализировать связанные документы', 'Подготовить сводку для согласования', 'Назначить ответственного и срок'].map((s, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span className="icon-tile sm" style={{ width: 30, height: 30, borderRadius: 9 }}><Icon name="check" s={16} /></span>
+                    <span style={{ fontWeight: 500 }}>{s}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="row" style={{ gap: 12 }}>
+              <Btn icon="check">Принять рекомендацию</Btn>
+              <Btn variant="ghost" onClick={() => setOpen(null)}>Отложить</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+Object.assign(window, { OverviewScreen, InsightsScreen, Hero });
+
+</script>
+<script type="text/babel" data-file="screens-docs.jsx">
+/* screens-docs.jsx — Документы (browser + upload + detail/analysis) */
+const { useState } = React;
+
+function UploadModal({ onClose }) {
+  const [drag, setDrag] = useState(false);
+  const [phase, setPhase] = useState('pick'); // pick | uploading | done
+  const [pct, setPct] = useState(0);
+  const start = () => {
+    setPhase('uploading');
+    let p = 0;
+    const t = setInterval(() => {
+      p += Math.random() * 22 + 8;
+      if (p >= 100) { p = 100; clearInterval(t); setTimeout(() => setPhase('done'), 400); }
+      setPct(Math.min(100, Math.round(p)));
+    }, 260);
+  };
+  return (
+    <Modal onClose={onClose}>
+      <div style={{ padding: 26 }} className="stack">
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <h3 className="display" style={{ fontSize: 21, fontWeight: 800 }}>Загрузить документ</h3>
+          <button className="btn icon btn-ghost" onClick={onClose} style={{ marginLeft: 'auto' }}><Icon name="x" s={18} /></button>
+        </div>
+
+        {phase === 'pick' && (
+          <>
+            <div className={`dropzone ${drag ? 'drag' : ''}`} onClick={start}
+              onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
+              onDragLeave={() => setDrag(false)}
+              onDrop={(e) => { e.preventDefault(); setDrag(false); start(); }}>
+              <div className="icon-tile lg" style={{ margin: '0 auto 16px' }}><Icon name="upload" s={28} /></div>
+              <div style={{ fontFamily: 'Manrope', fontWeight: 800, fontSize: 17 }}>Перетащите файл сюда</div>
+              <div style={{ color: 'var(--muted)', marginTop: 5 }}>или нажмите, чтобы выбрать · PDF, DOCX, JPG до 25 МБ</div>
+            </div>
+            <div className="row" style={{ gap: 10 }}>
+              {['Договор', 'Отчёт', 'Лицензия', 'Прочее'].map((c, i) => (
+                <span key={c} className={`chip ${i ? '' : ''}`} style={i ? { background: 'var(--surface-inset)', color: 'var(--ink-2)' } : null}>{c}</span>
+              ))}
+            </div>
+          </>
+        )}
+
+        {phase === 'uploading' && (
+          <div className="stack" style={{ gap: 16, padding: '20px 0' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <IconTile icon="doc" tint="indigo" />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700 }}>contract_472A.pdf</div>
+                <div style={{ fontSize: 13, color: 'var(--muted)' }}>2.4 МБ · загрузка…</div>
+              </div>
+              <span className="stat-num" style={{ fontSize: 20, color: 'var(--brand-ink)' }}>{pct}%</span>
+            </div>
+            <Progress pct={pct} />
+            <div style={{ fontSize: 13, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Icon name="scan" s={16} /> После загрузки документ будет отправлен на ИИ-анализ
+            </div>
+          </div>
+        )}
+
+        {phase === 'done' && (
+          <div className="stack" style={{ gap: 16, padding: '14px 0', alignItems: 'center', textAlign: 'center' }}>
+            <div className="icon-tile lg green" style={{ width: 72, height: 72 }}><Icon name="checkCircle" s={34} /></div>
+            <div>
+              <div className="display" style={{ fontSize: 19, fontWeight: 800 }}>Документ загружен</div>
+              <div style={{ color: 'var(--muted)', marginTop: 4 }}>Статус: <b style={{ color: 'var(--indigo)' }}>загружен</b> → поставлен в очередь на анализ</div>
+            </div>
+            <Btn onClick={onClose} icon="check">Готово</Btn>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function DocRow({ d, onOpen }) {
+  return (
+    <div className="card tap flat" style={{ background: 'var(--surface)', boxShadow: 'var(--shadow-sm)', display: 'flex', alignItems: 'center', gap: 15 }} onClick={() => onOpen(d)}>
+      <IconTile icon={d.type === 'Отчёт' ? 'receipt' : d.type === 'Лицензия' ? 'card' : 'doc'} tint={d.type === 'Отчёт' ? '' : d.type === 'Лицензия' ? 'green' : 'indigo'} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.title}</div>
+        <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 2 }}>{d.type} · {d.org} · {d.date}</div>
+      </div>
+      <div className="hide-sm" style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 96 }}>
+        {d.risk !== '—' && <span className="dot" style={{ width: 8, height: 8, borderRadius: '50%', background: d.riskColor }} />}
+        <span style={{ fontSize: 13, fontWeight: 600, color: d.risk === '—' ? 'var(--muted-2)' : 'var(--ink-2)' }}>{d.risk === '—' ? '—' : d.risk + ' риск'}</span>
+      </div>
+      <div style={{ minWidth: 116 }}><StatusPill status={d.status} /></div>
+      <Icon name="chevR" s={18} style={{ color: 'var(--muted-2)' }} />
+    </div>
+  );
+}
+
+function DocumentsScreen({ openUpload, openDoc }) {
+  const [view, setView] = useState('all'); // all | folders
+  const [active, setActive] = useState(null);
+  const docs = active ? DOCS.filter((d) => d.folder === active) : DOCS;
+  return (
+    <div className="view stack">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+        <div>
+          <h1 className="page-title" style={{ fontSize: 27 }}>Документы</h1>
+          <div className="page-sub">15 документов · 4 папки</div>
+        </div>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 10 }}>
+          <div className="seg">
+            <button className={view === 'all' ? 'on' : ''} onClick={() => { setView('all'); setActive(null); }}>Все</button>
+            <button className={view === 'folders' ? 'on' : ''} onClick={() => setView('folders')}>Папки</button>
+          </div>
+          <Btn icon="upload" onClick={openUpload}>Загрузить</Btn>
+        </div>
+      </div>
+
+      {view === 'folders' && !active && (
+        <div className="grid" style={{ gridTemplateColumns: 'repeat(2,1fr)' }}>
+          {FOLDERS.map((f) => (
+            <Card key={f.id} tap style={{ display: 'flex', alignItems: 'center', gap: 16 }} onClick={() => setActive(f.name)}>
+              <IconTile icon="folder" tint={f.tint} size="lg" />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontFamily: 'Manrope', fontWeight: 800, fontSize: 17 }}>{f.name}</div>
+                <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 3 }}>{f.count} документов</div>
+                {f.plan && <span className="badge ghost" style={{ marginTop: 10 }}><Icon name="target" s={13} />{f.plan}</span>}
+              </div>
+              <Icon name="chevR" s={20} style={{ color: 'var(--muted-2)' }} />
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {(view === 'all' || active) && (
+        <>
+          {active && (
+            <button className="btn btn-ghost sm" style={{ alignSelf: 'flex-start' }} onClick={() => setActive(null)}>
+              <Icon name="chevL" s={16} /> {active}
+            </button>
+          )}
+          <div className="stack" style={{ gap: 12 }}>
+            {docs.map((d) => <DocRow key={d.id} d={d} onOpen={openDoc} />)}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* -------- Document detail + analysis -------- */
+function DocumentDetail({ doc, onBack }) {
+  const a = ANALYSIS[doc.id] || ANALYSIS.d1;
+  const s = STATUS[doc.status];
+  return (
+    <div className="view stack">
+      <button className="btn btn-ghost sm" style={{ alignSelf: 'flex-start' }} onClick={onBack}>
+        <Icon name="chevL" s={16} /> К документам
+      </button>
+
+      <div className="grid" style={{ gridTemplateColumns: '1.4fr 1fr', alignItems: 'start' }}>
+        <div className="stack">
+          {/* header card */}
+          <Card>
+            <div style={{ display: 'flex', gap: 18, alignItems: 'flex-start' }}>
+              <IconTile icon={doc.type === 'Отчёт' ? 'receipt' : doc.type === 'Лицензия' ? 'card' : 'doc'} tint="indigo" size="lg" />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <Badge tone={s.badge}>{s.label}</Badge>
+                  {doc.risk !== '—' && <Badge tone={doc.risk === 'Высокий' ? 'red' : doc.risk === 'Средний' ? 'amber' : 'green'}>{doc.risk} риск</Badge>}
+                </div>
+                <h1 className="display" style={{ fontSize: 25, fontWeight: 800, letterSpacing: '-.02em', marginTop: 12, textWrap: 'pretty' }}>{doc.title}</h1>
+                <div style={{ color: 'var(--muted)', marginTop: 6 }}>{doc.type} · {doc.pages} стр. · {doc.size}</div>
+              </div>
+            </div>
+            <div className="grid" style={{ gridTemplateColumns: 'repeat(2,1fr)', gap: 12, marginTop: 18 }}>
+              {[['Контрагент', doc.org], ['Дата', doc.date], ['Папка', doc.folder], ['Тип', doc.type]].map(([k, v]) => (
+                <div key={k} style={{ background: 'var(--surface-2)', borderRadius: 'var(--r-md)', padding: '12px 15px' }}>
+                  <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>{k}</div>
+                  <div style={{ fontWeight: 700, marginTop: 3 }}>{v}</div>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          {/* AI summary */}
+          <Card style={{ borderLeft: '5px solid var(--accent-2)', paddingLeft: 'calc(var(--pad-card) - 1px)' }}>
+            <span className="chip"><Icon name="bolt" s={14} sw={2.6} />ИИ-анализ</span>
+            <p style={{ fontSize: 15.5, color: 'var(--ink-2)', marginTop: 13, textWrap: 'pretty' }}>{a.summary}</p>
+          </Card>
+
+          {/* extracted fields */}
+          <Card>
+            <SectionLabel>Извлечённые данные</SectionLabel>
+            <div style={{ marginTop: 10 }}>
+              {a.fields.map((f) => (
+                <div className="lrow" key={f.k} style={{ padding: '13px 0' }}>
+                  <span style={{ color: 'var(--muted)', fontWeight: 500 }}>{f.k}</span>
+                  <span style={{ marginLeft: 'auto', fontWeight: 700 }}>{f.v}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+
+        {/* right column */}
+        <div className="stack">
+          <Card>
+            <Placeholder label="предпросмотр PDF" h={210} />
+            <div className="row" style={{ gap: 10, marginTop: 14 }}>
+              <Btn icon="eye" className="" style={{ flex: 1 }}>Открыть</Btn>
+              <Btn variant="ghost" icon="download" style={{ flex: 1 }}>Скачать</Btn>
+            </div>
+          </Card>
+
+          <Card>
+            <SectionLabel>Проверки аудита</SectionLabel>
+            <div className="stack" style={{ gap: 11, marginTop: 13 }}>
+              {a.checks.map((c, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+                  <span className={`icon-tile sm ${c.ok ? 'green' : 'red'}`} style={{ width: 30, height: 30, borderRadius: 9 }}>
+                    <Icon name={c.ok ? 'check' : 'x'} s={16} sw={2.6} />
+                  </span>
+                  <span style={{ fontWeight: 500, color: c.ok ? 'var(--ink)' : 'var(--ink-2)' }}>{c.label}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card>
+            <SectionLabel>Выявленные риски</SectionLabel>
+            <div className="stack" style={{ gap: 12, marginTop: 13 }}>
+              {a.risks.map((r, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+                  <span className="dot" style={{ width: 9, height: 9, borderRadius: '50%', background: r.color }} />
+                  <span style={{ fontWeight: 500 }}>{r.label}</span>
+                  <span style={{ marginLeft: 'auto', fontWeight: 700, color: r.color, fontSize: 13 }}>{r.level}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { UploadModal, DocumentsScreen, DocumentDetail });
+
+</script>
+<script type="text/babel" data-file="screens-misc.jsx">
+/* screens-misc.jsx — Планы, Настройки, Авторизация */
+const { useState } = React;
+
+/* ---------------- Планы ---------------- */
+function PlansScreen() {
+  const [open, setOpen] = useState(PLANS[0].id);
+  return (
+    <div className="view stack">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+        <div>
+          <h1 className="page-title" style={{ fontSize: 27 }}>Планы</h1>
+          <div className="page-sub">3 активных плана · 7 целей</div>
+        </div>
+        <Btn icon="plus" style={{ marginLeft: 'auto' }}>Новый план</Btn>
+      </div>
+
+      <div className="grid" style={{ gridTemplateColumns: 'repeat(3,1fr)' }}>
+        {PLANS.map((p) => (
+          <Card key={p.id} tap style={{ outline: open === p.id ? '2px solid color-mix(in srgb, var(--accent-2) 50%, transparent)' : 'none' }} onClick={() => setOpen(p.id)}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <IconTile icon={p.icon} tint={p.tint} />
+              <Ring pct={p.progress} size={58} color={p.tint === 'green' ? 'var(--green)' : p.tint === 'amber' ? 'var(--amber)' : 'var(--indigo)'}>
+                <span className="stat-num" style={{ fontSize: 14 }}>{p.progress}%</span>
+              </Ring>
+            </div>
+            <h3 className="display" style={{ fontSize: 18, fontWeight: 800, marginTop: 14, textWrap: 'pretty' }}>{p.title}</h3>
+            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+              <Badge tone="ghost"><Icon name="calendar" s={13} />{p.period}</Badge>
+              <Badge tone={p.progress >= 80 ? 'green' : 'indigo'}>{p.status}</Badge>
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      {(() => {
+        const p = PLANS.find((x) => x.id === open);
+        return (
+          <Card className="view" key={p.id}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <IconTile icon={p.icon} tint={p.tint} size="lg" />
+              <div style={{ flex: 1 }}>
+                <h2 className="display" style={{ fontSize: 22, fontWeight: 800 }}>{p.title}</h2>
+                <div style={{ color: 'var(--muted)', marginTop: 3 }}>{p.goals.length} целей · период {p.period}</div>
+              </div>
+              <Btn variant="soft" size="sm" icon="plus">Цель</Btn>
+            </div>
+            <div style={{ marginTop: 8 }}>
+              {p.goals.map((g) => (
+                <div className="lrow" key={g.id} style={{ alignItems: 'center' }}>
+                  <span className={`icon-tile sm ${g.done ? 'green' : ''}`} style={{ width: 34, height: 34, borderRadius: 10 }}>
+                    <Icon name={g.done ? 'check' : 'target'} s={17} sw={2.4} />
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, textDecoration: g.done ? 'none' : 'none' }}>{g.title}</div>
+                    <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>{g.doneItems} из {g.items} задач выполнено</div>
+                  </div>
+                  <div style={{ width: 130 }} className="hide-sm"><Progress pct={Math.round(g.doneItems / g.items * 100)} color={g.done ? 'var(--green)' : 'var(--accent-2)'} h={7} /></div>
+                  {g.done
+                    ? <Badge tone="green" icon="check">Готово</Badge>
+                    : <Badge tone="ghost">{Math.round(g.doneItems / g.items * 100)}%</Badge>}
+                </div>
+              ))}
+            </div>
+          </Card>
+        );
+      })()}
+    </div>
+  );
+}
+
+/* ---------------- Настройки ---------------- */
+function SettingsScreen({ theme, setTheme }) {
+  const [notif, setNotif] = useState(true);
+  const [auto, setAuto] = useState(true);
+  const Toggle = ({ on, onClick }) => (
+    <button onClick={onClick} style={{ width: 46, height: 27, borderRadius: 999, border: 'none', cursor: 'pointer', padding: 3,
+      background: on ? 'var(--brand-grad)' : 'var(--line-2)', transition: '.2s', display: 'flex', justifyContent: on ? 'flex-end' : 'flex-start' }}>
+      <span style={{ width: 21, height: 21, borderRadius: '50%', background: 'white', boxShadow: '0 2px 4px rgba(0,0,0,.2)', transition: '.2s' }} />
+    </button>
+  );
+  return (
+    <div className="view stack" style={{ maxWidth: 760 }}>
+      <h1 className="page-title" style={{ fontSize: 27 }}>Настройки</h1>
+
+      <Card>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div className="avatar" style={{ width: 64, height: 64, borderRadius: 18, fontSize: 23 }}>АК</div>
+          <div style={{ flex: 1 }}>
+            <div className="display" style={{ fontSize: 20, fontWeight: 800 }}>Алексей Климов</div>
+            <div style={{ color: 'var(--muted)' }}>alexey@orbita.ru · ООО «Орбита»</div>
+          </div>
+          <Btn variant="ghost" size="sm" icon="user">Профиль</Btn>
+        </div>
+        <div className="grid" style={{ gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginTop: 18 }}>
+          {[['15', 'Документов'], ['3', 'Плана'], ['Pro', 'Тариф']].map(([n, l]) => (
+            <div key={l} style={{ background: 'var(--surface-2)', borderRadius: 'var(--r-md)', padding: '14px', textAlign: 'center' }}>
+              <div className="stat-num" style={{ fontSize: 22, color: 'var(--brand-ink)' }}>{n}</div>
+              <div style={{ fontSize: 12.5, color: 'var(--muted)', fontWeight: 600 }}>{l}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card>
+        <SectionLabel>Внешний вид</SectionLabel>
+        <div className="lrow" style={{ borderTop: 'none', paddingTop: 16 }}>
+          <span className="icon-tile sm" style={{ width: 38, height: 38 }}><Icon name="moon" s={19} /></span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700 }}>Тёмная тема</div>
+            <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>Переключить оформление интерфейса</div>
+          </div>
+          <div className="seg">
+            <button className={theme === 'light' ? 'on' : ''} onClick={() => setTheme('light')}>Светлая</button>
+            <button className={theme === 'dark' ? 'on' : ''} onClick={() => setTheme('dark')}>Тёмная</button>
+          </div>
+        </div>
+      </Card>
+
+      <Card>
+        <SectionLabel>Предпочтения</SectionLabel>
+        <div style={{ marginTop: 6 }}>
+          {[
+            { icon: 'bell', t: 'Уведомления об инсайтах', s: 'Срочные рекомендации и риски', on: notif, set: () => setNotif(!notif) },
+            { icon: 'scan', t: 'Авто-анализ при загрузке', s: 'Запускать ИИ сразу после загрузки', on: auto, set: () => setAuto(!auto) },
+          ].map((r) => (
+            <div className="lrow" key={r.t}>
+              <span className="icon-tile sm" style={{ width: 38, height: 38 }}><Icon name={r.icon} s={19} /></span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700 }}>{r.t}</div>
+                <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>{r.s}</div>
+              </div>
+              <Toggle on={r.on} onClick={r.set} />
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card style={{ display: 'flex', alignItems: 'center', gap: 14, background: 'var(--brand-grad)', border: 'none', color: 'white', position: 'relative', overflow: 'hidden' }}>
+        <div className="blob" style={{ position: 'absolute', width: 160, height: 160, borderRadius: '50%', background: 'rgba(255,255,255,.12)', top: -80, right: -20 }} />
+        <div className="frost" style={{ position: 'relative' }}><Icon name="sparkles" s={26} /></div>
+        <div style={{ position: 'relative', flex: 1 }}>
+          <div className="display" style={{ fontSize: 18, fontWeight: 800 }}>Тариф Pro</div>
+          <div style={{ color: 'var(--on-grad)', fontSize: 13.5 }}>Безлимитный ИИ-анализ и расширенная аналитика</div>
+        </div>
+        <button className="btn" style={{ position: 'relative', background: 'white', color: 'var(--brand-ink)' }}>Управление</button>
+      </Card>
+
+      <button className="btn btn-ghost" style={{ alignSelf: 'flex-start', color: 'var(--red)' }}><Icon name="logout" s={18} /> Выйти из аккаунта</button>
+    </div>
+  );
+}
+
+/* ---------------- Авторизация ---------------- */
+function AuthScreen({ onLogin }) {
+  const [email, setEmail] = useState('alexey@orbita.ru');
+  const [pwd, setPwd] = useState('••••••••');
+  return (
+    <div style={{ minHeight: '100vh', display: 'grid', gridTemplateColumns: '1.05fr 1fr', background: 'var(--bg)' }}>
+      {/* brand panel */}
+      <div className="auth-brand" style={{ background: 'var(--brand-grad)', color: 'white', padding: 56, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div className="blob" style={{ position: 'absolute', width: 360, height: 360, borderRadius: '50%', background: 'rgba(255,255,255,.10)', top: -120, right: -80 }} />
+        <div className="blob" style={{ position: 'absolute', width: 240, height: 240, borderRadius: '50%', background: 'rgba(255,255,255,.08)', bottom: -90, left: -40 }} />
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 13 }}>
+          <div className="frost" style={{ width: 48, height: 48, borderRadius: 14 }}><Icon name="bulb" s={24} /></div>
+          <div style={{ fontFamily: 'Manrope', fontWeight: 800, fontSize: 18 }}>ИИ-Консультант</div>
+        </div>
+        <div style={{ position: 'relative', marginTop: 'auto' }}>
+          <h1 className="display" style={{ fontSize: 42, fontWeight: 800, letterSpacing: '-.03em', lineHeight: 1.08, textWrap: 'balance' }}>
+            Ваш бизнес под<br />контролем ИИ
+          </h1>
+          <p style={{ color: 'var(--on-grad)', fontSize: 16, marginTop: 16, maxWidth: 380, textWrap: 'pretty' }}>
+            Загружайте документы, получайте инсайты и управляйте рисками — всё в одном месте.
+          </p>
+          <div style={{ display: 'flex', gap: 26, marginTop: 36 }}>
+            {[['15', 'документов'], ['80%', 'проанализир.'], ['4', 'инсайта']].map(([n, l]) => (
+              <div key={l}>
+                <div className="display" style={{ fontSize: 26, fontWeight: 800 }}>{n}</div>
+                <div style={{ fontSize: 12.5, color: 'var(--on-grad)' }}>{l}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* form */}
+      <div style={{ display: 'grid', placeItems: 'center', padding: 40 }}>
+        <div style={{ width: 'min(380px, 100%)' }}>
+          <h2 className="display" style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-.02em' }}>С возвращением</h2>
+          <p style={{ color: 'var(--muted)', marginTop: 6 }}>Войдите, чтобы продолжить работу</p>
+          <div className="stack" style={{ gap: 14, marginTop: 26 }}>
+            <label className="field">
+              <span>Email</span>
+              <div className="field-in"><Icon name="user" s={18} style={{ color: 'var(--muted)' }} /><input value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+            </label>
+            <label className="field">
+              <span>Пароль</span>
+              <div className="field-in"><Icon name="shield" s={18} style={{ color: 'var(--muted)' }} /><input type="password" value={pwd} onChange={(e) => setPwd(e.target.value)} /><Icon name="eye" s={18} style={{ color: 'var(--muted-2)', marginLeft: 'auto' }} /></div>
+            </label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--ink-2)', cursor: 'pointer' }}>
+                <span className="icon-tile sm" style={{ width: 22, height: 22, borderRadius: 7 }}><Icon name="check" s={14} sw={3} /></span> Запомнить
+              </label>
+              <a style={{ color: 'var(--brand-ink)', fontWeight: 600, textDecoration: 'none', cursor: 'pointer' }}>Забыли пароль?</a>
+            </div>
+            <Btn onClick={onLogin} iconR="arrowR" style={{ marginTop: 4, padding: '14px' }}>Войти</Btn>
+            <div style={{ textAlign: 'center', fontSize: 13.5, color: 'var(--muted)', marginTop: 4 }}>
+              Нет аккаунта? <a onClick={onLogin} style={{ color: 'var(--brand-ink)', fontWeight: 700, cursor: 'pointer' }}>Создать</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { PlansScreen, SettingsScreen, AuthScreen });
+
+</script>
+<script type="text/babel" data-file="app.jsx">
+/* app.jsx — shell: sidebar, topbar, router, tweaks */
+const { useState: useS, useEffect: useE } = React;
+
+const ACCENTS = {
+  violet:  ['#7C3AED', '#9333EA', '#C026D3'],
+  indigo:  ['#4F46E5', '#6366F1', '#8B5CF6'],
+  blue:    ['#2563EB', '#3B82F6', '#06B6D4'],
+  emerald: ['#0D9488', '#10B981', '#22C55E'],
+  sunset:  ['#DB2777', '#E11D48', '#F97316'],
+};
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "theme": "light",
+  "accent": "violet",
+  "density": "comfortable"
+}/*EDITMODE-END*/;
+
+function Sidebar({ route, go, open, setOpen }) {
+  return (
+    <>
+      {open && <div className="scrim" onClick={() => setOpen(false)} />}
+      <aside className={`sidebar ${open ? 'open' : ''}`}>
+        <div className="brand">
+          <div className="brand-mark"><Icon name="bulb" s={22} /></div>
+          <div>
+            <div className="brand-name">ИИ-Консультант</div>
+            <div className="brand-sub">Premium</div>
+          </div>
+        </div>
+        <div className="nav-label">Меню</div>
+        {NAV.map((n) => (
+          <button key={n.key} className={`nav-item ${route === n.key || (route === 'docdetail' && n.key === 'documents') ? 'active' : ''}`}
+            onClick={() => { go(n.key); setOpen(false); }}>
+            <span className="nav-ico"><Icon name={n.icon} s={20} /></span>
+            {n.label}
+            {n.dot && <span className="badge amber" style={{ marginLeft: 'auto', padding: '3px 9px', fontSize: 11.5 }}>{n.dot}</span>}
+          </button>
+        ))}
+        <div className="side-user" onClick={() => { go('settings'); setOpen(false); }}>
+          <Avatar name="АК" />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Алексей Климов</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)' }}>ООО «Орбита»</div>
+          </div>
+          <Icon name="gear" s={17} style={{ color: 'var(--muted)' }} />
+        </div>
+      </aside>
+    </>
+  );
+}
+
+const TITLES = {
+  overview: ['Обзор', 'Главная панель бизнеса'],
+  insights: ['Инсайты', 'ИИ-рекомендации'],
+  documents: ['Документы', 'Хранилище и анализ'],
+  docdetail: ['Документ', 'Результаты анализа'],
+  plans: ['Планы', 'Цели и задачи'],
+  settings: ['Настройки', 'Профиль и предпочтения'],
+};
+
+function App() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  const [authed, setAuthed] = useS(false);
+  const [route, setRoute] = useS('overview');
+  const [menuOpen, setMenuOpen] = useS(false);
+  const [upload, setUpload] = useS(false);
+  const [doc, setDoc] = useS(null);
+
+  const theme = t.theme;
+  const setTheme = (v) => setTweak('theme', v);
+
+  // apply theme tokens
+  useE(() => {
+    const r = document.documentElement;
+    r.setAttribute('data-theme', t.theme);
+    r.setAttribute('data-density', t.density);
+    const a = ACCENTS[t.accent] || ACCENTS.violet;
+    r.style.setProperty('--accent-1', a[0]);
+    r.style.setProperty('--accent-2', a[1]);
+    r.style.setProperty('--accent-3', a[2]);
+  }, [t.theme, t.accent, t.density]);
+
+  const go = (r) => { setDoc(null); setRoute(r); window.scrollTo({ top: 0 }); };
+  const openDoc = (d) => { setDoc(d); setRoute('docdetail'); window.scrollTo({ top: 0 }); };
+
+  const panel = (
+    <TweaksPanel>
+      <TweakSection label="Тема" />
+      <TweakRadio label="Оформление" value={t.theme} options={['light', 'dark']} onChange={(v) => setTweak('theme', v)} />
+      <TweakSection label="Акцент" />
+      <TweakColor label="Цвет бренда" value={ACCENTS[t.accent][1]}
+        options={Object.values(ACCENTS).map((a) => a[1])}
+        onChange={(v) => { const key = Object.keys(ACCENTS).find((k) => ACCENTS[k][1] === v) || 'violet'; setTweak('accent', key); }} />
+      <TweakSection label="Плотность" />
+      <TweakRadio label="Интерфейс" value={t.density} options={['comfortable', 'compact']} onChange={(v) => setTweak('density', v)} />
+    </TweaksPanel>
+  );
+
+  if (!authed) {
+    return <><AuthScreen onLogin={() => setAuthed(true)} />{panel}</>;
+  }
+
+  const [title, sub] = TITLES[route];
+
+  return (
+    <div className="app-shell">
+      <Sidebar route={route} go={go} open={menuOpen} setOpen={setMenuOpen} />
+      <div className="main">
+        <header className="topbar">
+          <button className="btn icon btn-ghost menu-btn" onClick={() => setMenuOpen(true)}><Icon name="menu" s={20} /></button>
+          <div>
+            <div className="page-title">{title}</div>
+            <div className="page-sub hide-sm">{sub}</div>
+          </div>
+          <div className="search hide-sm" style={{ marginLeft: 'auto' }}>
+            <Icon name="search" s={18} />
+            <input placeholder="Поиск документов, инсайтов…" />
+          </div>
+          <button className="btn icon btn-ghost" style={{ position: 'relative' }}>
+            <Icon name="bell" s={19} />
+            <span style={{ position: 'absolute', top: 7, right: 7, width: 8, height: 8, borderRadius: '50%', background: 'var(--red)', border: '2px solid var(--surface)' }} />
+          </button>
+          <Btn icon="upload" className="hide-sm" onClick={() => setUpload(true)}>Загрузить</Btn>
+        </header>
+
+        <div className="content scroll">
+          {route === 'overview' && <OverviewScreen go={go} />}
+          {route === 'insights' && <InsightsScreen />}
+          {route === 'documents' && <DocumentsScreen openUpload={() => setUpload(true)} openDoc={openDoc} />}
+          {route === 'docdetail' && doc && <DocumentDetail doc={doc} onBack={() => go('documents')} />}
+          {route === 'plans' && <PlansScreen />}
+          {route === 'settings' && <SettingsScreen theme={theme} setTheme={setTheme} />}
+        </div>
+      </div>
+
+      {upload && <UploadModal onClose={() => setUpload(false)} />}
+      {panel}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+
+</script>
+</body>
+</html>
