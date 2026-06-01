@@ -126,3 +126,26 @@ func (a *API) internalAuth(next http.HandlerFunc) http.Handler {
 func (a *API) healthz(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
+
+// WithCORS wraps a handler with permissive CORS headers so a browser frontend
+// served from a different origin can call the API. Auth is a Bearer header
+// (not a cookie), so a wildcard origin is acceptable. Preflight OPTIONS
+// requests are answered with 204 and do not reach the wrapped handler.
+func WithCORS(next http.Handler, origin string) http.Handler {
+	if origin == "" {
+		origin = "*"
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("Access-Control-Allow-Origin", origin)
+		h.Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+		h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+		h.Set("Access-Control-Max-Age", "86400")
+		h.Add("Vary", "Origin")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}

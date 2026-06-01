@@ -33,17 +33,19 @@ function Sidebar({ route, go, open, setOpen }) {
             onClick={() => { go(n.key); setOpen(false); }}>
             <span className="nav-ico"><Icon name={n.icon} s={20} /></span>
             {n.label}
-            {n.dot && <span className="badge amber" style={{ marginLeft: 'auto', padding: '3px 9px', fontSize: 11.5 }}>{n.dot}</span>}
+            {n.dot && API.isDemo() && <span className="badge amber" style={{ marginLeft: 'auto', padding: '3px 9px', fontSize: 11.5 }}>{n.dot}</span>}
           </button>
         ))}
+        {(() => { const u = API.currentUser(); return (
         <div className="side-user" onClick={() => { go('settings'); setOpen(false); }}>
-          <Avatar name="АК" />
+          <Avatar name={u.initials} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Алексей Климов</div>
-            <div style={{ fontSize: 12, color: 'var(--muted)' }}>ООО «Орбита»</div>
+            <div style={{ fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.name}</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.org}</div>
           </div>
           <Icon name="gear" s={17} style={{ color: 'var(--muted)' }} />
         </div>
+        ); })()}
       </aside>
     </>
   );
@@ -60,11 +62,12 @@ const TITLES = {
 
 function App() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
-  const [authed, setAuthed] = useS(false);
+  const [authed, setAuthed] = useS(() => API.isAuthed());
   const [route, setRoute] = useS('overview');
   const [menuOpen, setMenuOpen] = useS(false);
   const [upload, setUpload] = useS(false);
   const [doc, setDoc] = useS(null);
+  const [docRefresh, setDocRefresh] = useS(0);
 
   const theme = t.theme;
   const setTheme = (v) => setTweak('theme', v);
@@ -82,6 +85,14 @@ function App() {
 
   const go = (r) => { setDoc(null); setRoute(r); window.scrollTo({ top: 0 }); };
   const openDoc = (d) => { setDoc(d); setRoute('docdetail'); window.scrollTo({ top: 0 }); };
+  const logout = () => { API.auth.logout(); setAuthed(false); setRoute('overview'); };
+
+  // Любой запрос, упавший с 401, возвращает пользователя на экран входа.
+  useE(() => {
+    const onUnauthorized = () => setAuthed(false);
+    window.addEventListener('api:unauthorized', onUnauthorized);
+    return () => window.removeEventListener('api:unauthorized', onUnauthorized);
+  }, []);
 
   const panel = (
     <TweaksPanel>
@@ -126,14 +137,14 @@ function App() {
         <div className="content scroll">
           {route === 'overview' && <OverviewScreen go={go} />}
           {route === 'insights' && <InsightsScreen />}
-          {route === 'documents' && <DocumentsScreen openUpload={() => setUpload(true)} openDoc={openDoc} />}
+          {route === 'documents' && <DocumentsScreen openUpload={() => setUpload(true)} openDoc={openDoc} refreshKey={docRefresh} />}
           {route === 'docdetail' && doc && <DocumentDetail doc={doc} onBack={() => go('documents')} />}
           {route === 'plans' && <PlansScreen />}
-          {route === 'settings' && <SettingsScreen theme={theme} setTheme={setTheme} />}
+          {route === 'settings' && <SettingsScreen theme={theme} setTheme={setTheme} onLogout={logout} />}
         </div>
       </div>
 
-      {upload && <UploadModal onClose={() => setUpload(false)} />}
+      {upload && <UploadModal onClose={() => setUpload(false)} onUploaded={() => setDocRefresh((n) => n + 1)} />}
       {panel}
     </div>
   );

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ИИ-Консультант — Web (live)</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- React + in-browser Babel (prototype, no build step) -->
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+
+  <!-- Loader: appends a per-load version so the browser never serves stale
+       JSX/JS during prototype dev. Plain JS (config/api) load before the JSX;
+       Babel auto-compiles the text/babel scripts on DOMContentLoaded. -->
+  <script>
+    (function () {
+      var v = Date.now();
+      ['config.js', 'api.js'].forEach(function (f) {
+        document.write('<script src="' + f + '?v=' + v + '"><\/script>');
+      });
+      ['tweaks-panel.jsx', 'icons.jsx', 'ui.jsx', 'data.jsx',
+       'screens-home.jsx', 'screens-docs.jsx', 'screens-misc.jsx', 'app.jsx'].forEach(function (f) {
+        document.write('<script type="text/babel" src="' + f + '?v=' + v + '"><\/script>');
+      });
+    })();
+  </script>
+</body>
+</html>

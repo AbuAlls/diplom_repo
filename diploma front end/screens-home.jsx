@@ -18,7 +18,92 @@ function Hero({ icon, title, sub, children }) {
 }
 
 /* ---------------- Обзор ---------------- */
+// Демо-аккаунт видит витринный пресет; остальные — свою реальную (или пустую) картину.
 function OverviewScreen({ go }) {
+  return API.isDemo() ? <DemoOverview go={go} /> : <RealOverview go={go} />;
+}
+
+function StatCard({ value, label, hint, hintColor }) {
+  return (
+    <Card>
+      <div className="stat-num" style={{ fontSize: 40 }}>{value}</div>
+      <div style={{ fontWeight: 600, marginTop: 4, color: 'var(--ink-2)' }}>{label}</div>
+      {hint && <div className="status" style={{ color: hintColor || 'var(--muted)', marginTop: 18 }}>{hint}</div>}
+    </Card>
+  );
+}
+
+// Реальный обзор: KPI считаются из данных текущего аккаунта; пусто = нули.
+function RealOverview({ go }) {
+  const [stats, setStats] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const docs = await API.documents.list({ size: 100 });
+        const plans = await API.plans.list();
+        const items = (docs.items || []);
+        const analyzed = items.filter((d) => ['pending_review', 'confirmed'].includes(d.status)).length;
+        if (alive) setStats({ docs: docs.meta ? docs.meta.total : items.length, analyzed, plans: plans.meta ? plans.meta.total : (plans.items || []).length });
+      } catch (e) {
+        if (alive) setStats({ docs: 0, analyzed: 0, plans: 0, error: e.message });
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const s = stats || { docs: '—', analyzed: '—', plans: '—' };
+  const empty = stats && stats.docs === 0 && stats.plans === 0;
+
+  return (
+    <div className="view stack">
+      <Hero icon="grid" title="Обзор" sub="Общая картина вашего бизнеса" />
+
+      <div className="grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+        <Card className="kpi-grad" style={{ background: 'var(--brand-grad)', color: 'white', border: 'none', position: 'relative', overflow: 'hidden' }}>
+          <div className="blob" style={{ position: 'absolute', width: 130, height: 130, borderRadius: '50%', background: 'rgba(255,255,255,.12)', top: -50, right: -30 }} />
+          <div style={{ position: 'relative' }}>
+            <div className="stat-num" style={{ fontSize: 40 }}>{s.docs}</div>
+            <div style={{ fontWeight: 600, marginTop: 4 }}>Всего документов</div>
+          </div>
+        </Card>
+        <StatCard value={s.analyzed} label="Проанализировано" hint={<><Icon name="checkCircle" s={17} /> готово</>} hintColor="var(--green)" />
+        <StatCard value={s.plans} label="Планов" />
+        <StatCard value={0} label="Новых инсайта" />
+      </div>
+
+      {empty && (
+        <Card style={{ textAlign: 'center', padding: '34px 22px' }}>
+          <div className="icon-tile lg" style={{ margin: '0 auto 14px' }}><Icon name="upload" s={28} /></div>
+          <div className="display" style={{ fontSize: 19, fontWeight: 800 }}>Здесь пока пусто</div>
+          <div style={{ color: 'var(--muted)', marginTop: 6 }}>Создайте план и загрузите документ — данные появятся автоматически.</div>
+        </Card>
+      )}
+
+      <Card>
+        <SectionLabel>Рекомендуемые действия</SectionLabel>
+        <div className="grid" style={{ gridTemplateColumns: 'repeat(3,1fr)', marginTop: 14 }}>
+          {[
+            { icon: 'target', tint: 'green', t: 'Создать план', s: 'Задайте цели и позиции', go: 'plans' },
+            { icon: 'upload', tint: 'indigo', t: 'Загрузить документ', s: 'Добавьте файл для анализа', go: 'documents' },
+            { icon: 'bulb', tint: 'amber', t: 'Открыть инсайты', s: 'ИИ-рекомендации', go: 'insights' },
+          ].map((a) => (
+            <div key={a.t} className="card tap flat" style={{ background: 'var(--surface-2)', display: 'flex', alignItems: 'center', gap: 14 }} onClick={() => go(a.go)}>
+              <IconTile icon={a.icon} tint={a.tint} size="sm" />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 14.5 }}>{a.t}</div>
+                <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>{a.s}</div>
+              </div>
+              <Icon name="chevR" s={18} style={{ color: 'var(--muted-2)' }} />
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function DemoOverview({ go }) {
   const overall = { color: 'var(--amber)', label: 'Требует внимания' };
   return (
     <div className="view stack">
@@ -149,6 +234,27 @@ function InsightCard({ ins, onOpen }) {
 }
 
 function InsightsScreen() {
+  return API.isDemo() ? <DemoInsights /> : <EmptyInsights />;
+}
+
+// Реальные аккаунты: ленты инсайтов на бэкенде нет — показываем пустое состояние.
+// (ИИ-рекомендации доступны точечно на странице «Планы» по каждой позиции.)
+function EmptyInsights() {
+  return (
+    <div className="view stack">
+      <Hero icon="bulb" title="Инсайты" sub="ИИ-рекомендации для вашего бизнеса" />
+      <Card style={{ textAlign: 'center', padding: '40px 22px' }}>
+        <div className="icon-tile lg amber" style={{ margin: '0 auto 14px' }}><Icon name="bulb" s={28} /></div>
+        <div className="display" style={{ fontSize: 19, fontWeight: 800 }}>Инсайтов пока нет</div>
+        <div style={{ color: 'var(--muted)', marginTop: 6, maxWidth: 420, marginInline: 'auto' }}>
+          Загрузите документы и запустите ИИ-анализ по позициям плана — рекомендации появятся здесь.
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function DemoInsights() {
   const [open, setOpen] = useState(null);
   const [filter, setFilter] = useState('Все');
   const filters = ['Все', 'Срочно', 'Важно', 'Возможность'];

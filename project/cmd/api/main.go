@@ -101,7 +101,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           api.Routes(),
+		Handler:           httpapi.WithCORS(api.Routes(), cfg.CORSAllowedOrigin),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
