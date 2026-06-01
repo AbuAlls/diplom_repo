@@ -52,10 +52,15 @@ const FOLDERS = [
 ];
 
 const STATUS = {
-  processed:  { label: 'Обработан',   color: 'var(--green)', badge: 'green' },
-  processing: { label: 'Обработка',   color: 'var(--amber)', badge: 'amber' },
-  uploaded:   { label: 'Загружен',    color: 'var(--indigo)', badge: 'indigo' },
-  failed:     { label: 'Ошибка',      color: 'var(--red)',   badge: 'red' },
+  // Бэкенд-статусы документа (см. domain.Document.Status).
+  uploaded:       { label: 'Загружен',   color: 'var(--indigo)', badge: 'indigo' },
+  processing:     { label: 'Обработка',  color: 'var(--amber)',  badge: 'amber' },
+  pending_review: { label: 'На проверке', color: 'var(--amber)',  badge: 'amber' },
+  confirmed:      { label: 'Подтверждён', color: 'var(--green)',  badge: 'green' },
+  rejected:       { label: 'Отклонён',   color: 'var(--red)',    badge: 'red' },
+  failed:         { label: 'Ошибка',     color: 'var(--red)',    badge: 'red' },
+  // Старый мок-статус (используется FOLDERS/мок-документами).
+  processed:      { label: 'Обработан',  color: 'var(--green)',  badge: 'green' },
 };
 
 const DOCS = [

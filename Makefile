@@ -1,4 +1,4 @@
-.PHONY: up down ps logs build test api-sh db-psql minio-open minio-ready api-minio-check
+.PHONY: up down ps logs build test api-sh db-psql minio-open minio-ready api-minio-check front
 
 up:
 	docker compose up -d --build
@@ -35,3 +35,8 @@ minio-ready:
 
 api-minio-check:
 	bash scripts/check_minio_api.sh
+
+# Serve the prototype frontend over HTTP so Babel can fetch the .jsx files and
+# the browser can reach the API. Open http://localhost:5500/index.html
+front:
+	python3 "diploma front end/serve.py"

@@ -26,6 +26,11 @@ type Config struct {
 	AIModel          string
 	AIRequestTimeout time.Duration
 	InternalAPIToken string // shared secret for the agent's /api/* callbacks
+
+	// CORSAllowedOrigin is the Access-Control-Allow-Origin value sent on every
+	// response. Default "*" is safe here because auth is a Bearer header (not a
+	// cookie), so credentialed-CORS restrictions do not apply.
+	CORSAllowedOrigin string
 }
 
 func Load() Config {
@@ -57,6 +62,8 @@ func Load() Config {
 		AIModel:          getenv("AI_MODEL", "yc:qwen3.5-35b-a3b"),
 		AIRequestTimeout: getDuration("AI_REQUEST_TIMEOUT", 60*time.Second),
 		InternalAPIToken: getenv("INTERNAL_API_TOKEN", "dev-internal-token-change-me"),
+
+		CORSAllowedOrigin: getenv("CORS_ALLOWED_ORIGIN", "*"),
 	}
 }
 
