@@ -14,8 +14,10 @@ var ErrForbidden = errors.New("forbidden")
 // ErrValidation is returned when input fails business validation.
 var ErrValidation = errors.New("validation error")
 
-// ErrConflict is returned when an action is invalid for the resource's current state.
-var ErrConflict = errors.New("conflict")
+// ErrConflict is returned when an action is invalid for the resource's current
+// state. It aliases the ports sentinel so conflicts raised in the repository
+// layer (e.g. a failed conditional status transition) are matched here too.
+var ErrConflict = ports.ErrConflict
 
 // offsetLimit normalizes page/size (1-based page, size clamped 1..100) into an
 // SQL offset/limit pair.
@@ -35,20 +37,49 @@ func offsetLimit(page, size int) (offset, limit int) {
 // ErrNotFound re-exports the repository sentinel for handler mapping.
 var ErrNotFound = ports.ErrNotFound
 
-// requirePlan loads a plan and verifies the caller owns it.
-func requirePlan(ctx context.Context, plans ports.PlanRepo, planID, userID int64) (domain.Plan, error) {
+// canAccess reports whether userID may act on a resource owned by ownerID.
+// Access is granted when the caller is the owner, or when caller and owner share
+// at least one corporate-account group ("all members share everything"). When
+// groups is nil (e.g. in unit tests that don't wire group sharing), only direct
+// ownership is allowed.
+func canAccess(ctx context.Context, groups ports.GroupRepo, ownerID, userID int64) (bool, error) {
+	if ownerID == userID {
+		return true, nil
+	}
+	if groups == nil {
+		return false, nil
+	}
+	peers, err := groups.CoMemberIDs(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+	for _, id := range peers {
+		if id == ownerID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// requirePlan loads a plan and verifies the caller may access it (owner or
+// corporate-account co-member).
+func requirePlan(ctx context.Context, plans ports.PlanRepo, groups ports.GroupRepo, planID, userID int64) (domain.Plan, error) {
 	plan, err := plans.GetByID(ctx, planID)
 	if err != nil {
 		return domain.Plan{}, err
 	}
-	if plan.CreatedBy != userID {
+	ok, err := canAccess(ctx, groups, plan.CreatedBy, userID)
+	if err != nil {
+		return domain.Plan{}, err
+	}
+	if !ok {
 		return domain.Plan{}, ErrForbidden
 	}
 	return plan, nil
 }
 
-// requireGoal loads a goal under the given plan and verifies ownership.
-func requireGoal(ctx context.Context, goals ports.GoalRepo, plans ports.PlanRepo, planID, goalID, userID int64) (domain.Goal, error) {
+// requireGoal loads a goal under the given plan and verifies access.
+func requireGoal(ctx context.Context, goals ports.GoalRepo, plans ports.PlanRepo, groups ports.GroupRepo, planID, goalID, userID int64) (domain.Goal, error) {
 	goal, err := goals.GetByID(ctx, goalID)
 	if err != nil {
 		return domain.Goal{}, err
@@ -56,15 +87,15 @@ func requireGoal(ctx context.Context, goals ports.GoalRepo, plans ports.PlanRepo
 	if goal.PlanID != planID {
 		return domain.Goal{}, ErrNotFound
 	}
-	if _, err := requirePlan(ctx, plans, planID, userID); err != nil {
+	if _, err := requirePlan(ctx, plans, groups, planID, userID); err != nil {
 		return domain.Goal{}, err
 	}
 	return goal, nil
 }
 
-// requireItemByID loads a plan item by id and verifies the caller owns it via
-// item → goal → plan → created_by.
-func requireItemByID(ctx context.Context, items ports.PlanItemRepo, goals ports.GoalRepo, plans ports.PlanRepo, itemID, userID int64) (domain.PlanItem, error) {
+// requireItemByID loads a plan item by id and verifies access via
+// item → goal → plan → created_by (widened to corporate-account co-members).
+func requireItemByID(ctx context.Context, items ports.PlanItemRepo, goals ports.GoalRepo, plans ports.PlanRepo, groups ports.GroupRepo, itemID, userID int64) (domain.PlanItem, error) {
 	item, err := items.GetByID(ctx, itemID)
 	if err != nil {
 		return domain.PlanItem{}, err
@@ -73,7 +104,7 @@ func requireItemByID(ctx context.Context, items ports.PlanItemRepo, goals ports.
 	if err != nil {
 		return domain.PlanItem{}, err
 	}
-	if _, err := requirePlan(ctx, plans, goal.PlanID, userID); err != nil {
+	if _, err := requirePlan(ctx, plans, groups, goal.PlanID, userID); err != nil {
 		return domain.PlanItem{}, err
 	}
 	return item, nil

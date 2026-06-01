@@ -82,7 +82,15 @@ func (a *API) uploadDocument(w http.ResponseWriter, r *http.Request, itemID int6
 		writeUsecaseError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, toDocument(view))
+	// Async path: the document is queued for recognition and has no extracted
+	// data yet. Return 202 Accepted so the client knows to poll GET
+	// /v0/documents/{id} until status becomes pending_review or failed. The
+	// synchronous path returns the fully recognized document with 200.
+	status := http.StatusOK
+	if view.Extracted == nil {
+		status = http.StatusAccepted
+	}
+	writeJSON(w, status, toDocument(view))
 }
 
 func (a *API) listDocuments(w http.ResponseWriter, r *http.Request) {

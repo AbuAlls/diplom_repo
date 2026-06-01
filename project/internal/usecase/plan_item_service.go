@@ -14,13 +14,14 @@ const (
 )
 
 type PlanItemService struct {
-	Items ports.PlanItemRepo
-	Goals ports.GoalRepo
-	Plans ports.PlanRepo
+	Items  ports.PlanItemRepo
+	Goals  ports.GoalRepo
+	Plans  ports.PlanRepo
+	Groups ports.GroupRepo
 }
 
 func (s *PlanItemService) Create(ctx context.Context, ownerID, planID, goalID int64, in ports.PlanItemInput) (domain.PlanItem, error) {
-	if _, err := requireGoal(ctx, s.Goals, s.Plans, planID, goalID, ownerID); err != nil {
+	if _, err := requireGoal(ctx, s.Goals, s.Plans, s.Groups, planID, goalID, ownerID); err != nil {
 		return domain.PlanItem{}, err
 	}
 	in.Name = strings.TrimSpace(in.Name)
@@ -37,7 +38,7 @@ func (s *PlanItemService) Create(ctx context.Context, ownerID, planID, goalID in
 }
 
 func (s *PlanItemService) ListByGoal(ctx context.Context, ownerID, planID, goalID int64, page, size int) ([]domain.PlanItem, int, error) {
-	if _, err := requireGoal(ctx, s.Goals, s.Plans, planID, goalID, ownerID); err != nil {
+	if _, err := requireGoal(ctx, s.Goals, s.Plans, s.Groups, planID, goalID, ownerID); err != nil {
 		return nil, 0, err
 	}
 	offset, limit := offsetLimit(page, size)
@@ -45,7 +46,7 @@ func (s *PlanItemService) ListByGoal(ctx context.Context, ownerID, planID, goalI
 }
 
 func (s *PlanItemService) Update(ctx context.Context, ownerID, planID, goalID, itemID int64, patch ports.PlanItemPatch) (domain.PlanItem, error) {
-	if _, err := requireGoal(ctx, s.Goals, s.Plans, planID, goalID, ownerID); err != nil {
+	if _, err := requireGoal(ctx, s.Goals, s.Plans, s.Groups, planID, goalID, ownerID); err != nil {
 		return domain.PlanItem{}, err
 	}
 	item, err := s.Items.GetByID(ctx, itemID)

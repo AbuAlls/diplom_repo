@@ -1,7 +1,9 @@
 # Async document recognition — design options
 
-Status: **proposal / not yet implemented.** Written to capture the idea so we can
-implement it later.
+Status: **implemented.** Option B (DB-backed queue + worker) is the default,
+shipping path and is covered by tests. Option A (in-process goroutine queue) is
+implemented as a non-default, example-only alternative (no tests). Option C
+(NATS) remains a future direction. See "Implementation notes" at the end.
 
 ## Problem
 
@@ -212,15 +214,85 @@ type RecognitionQueue interface {
 
 ### Rough implementation checklist
 
-- [ ] Add `uploaded` to the status set; `Upload` creates rows as `uploaded`.
-- [ ] Add `RecognitionQueue` port + DB-backed implementation (Option B minimal or
-      with `recognition_jobs` table + migration).
-- [ ] Extract recognition into a worker (`internal/usecase` worker +
+- [x] Add `uploaded` to the status set; `Upload` creates rows as `uploaded`.
+- [x] Add `RecognitionQueue` port + DB-backed implementation (Option B with the
+      `recognition_jobs` table + migration).
+- [x] Extract recognition into a worker (`internal/usecase` worker +
       `cmd/api/main.go` startup goroutine with graceful shutdown via existing
       signal context).
-- [ ] Change the upload handler to return **202 Accepted**.
-- [ ] Keep `GET /v0/documents/{id}` for polling; document the contract.
-- [ ] Tests: upload returns `uploaded`; worker transitions to `pending_review`;
-      AI failure → `failed` with retry; idempotent re-processing.
+- [x] Change the upload handler to return **202 Accepted**.
+- [x] Keep `GET /v0/documents/{id}` for polling; document the contract.
+- [x] Tests: upload returns `uploaded`; worker transitions to `pending_review`;
+      AI failure → `failed` with retry; give-up after max attempts; confirmed
+      docs are not re-processed.
 - [ ] (Optional, later) `LISTEN/NOTIFY` to reduce poll latency; SSE for push.
 ```
+
+---
+
+## Implementation notes (as built)
+
+### Shared seam (ports)
+
+`internal/ports/ports.go`:
+
+- `RecognitionEnqueuer` — narrow producer port (`Enqueue`). `DocumentService`
+  depends only on this, so it is agnostic to how work runs.
+- `RecognitionQueue` — full durable contract: `Enqueue` + `Claim` / `Complete` /
+  `Fail` (+ `RecognitionJob`). The worker depends on this.
+
+### Use case (`internal/usecase`)
+
+- `DocumentService.Queue ports.RecognitionEnqueuer`. When set, `Upload` saves the
+  file, creates the row as `uploaded`, calls `Enqueue`, and returns immediately
+  (no `Extracted`). When `nil`, it falls back to the old **synchronous** inline
+  recognition — which is why the existing HTTP tests (queue unset) still expect
+  `200` + `pending_review`.
+- `DocumentService.ProcessRecognition(ctx, documentID)` — worker-facing entry
+  point: loads the row (skips `confirmed`), reads bytes back from object storage,
+  flips to `processing`, runs `applyRecognition` (→ `pending_review`, or
+  `failed` on recognizer error). No ownership check — the worker acts for the
+  system.
+- `RecognitionWorker` (`recognition_worker.go`) — polls `Claim`, runs
+  `ProcessRecognition`, then `Complete` / `Fail`. Greedily drains the queue, then
+  sleeps `PollInterval`. Stops on context cancel.
+
+### Option B — durable queue (default)
+
+- Migration `migrations/core/000002_recognition_jobs.{up,down}.sql` adds
+  `recognition_jobs` (status / attempts / max_attempts / last_error / run_after).
+- `internal/adapters/pgcore/recognition_queue_repo.go` —
+  `Claim` uses `FOR UPDATE SKIP LOCKED`; `Fail` increments attempts and either
+  re-queues with `run_after = now() + backoff` or marks `failed` at the cap.
+
+### Option A — in-process goroutines (example only)
+
+- `internal/adapters/inprocqueue/queue.go` — buffered channel + worker pool,
+  implements `RecognitionEnqueuer`. Documented as non-durable / no-retry /
+  single-instance. Not the default; selected via config only.
+
+### Wiring & config
+
+- `cmd/api/main.go` selects the queue via `RECOGNITION_QUEUE`:
+  `db` (default, Option B) · `inproc` (Option A) · `sync` (legacy inline). The
+  worker/pool goroutine shares the existing signal context for graceful shutdown.
+- `internal/config/config.go`: `RECOGNITION_QUEUE`, `RECOGNITION_POLL_INTERVAL`,
+  `RECOGNITION_RETRY_BACKOFF`, `RECOGNITION_WORKERS`.
+
+### HTTP contract
+
+- `POST /v0/documents/upload/{id}` returns **202 Accepted** on the async path
+  (body has the doc in status `uploaded`, no extracted fields), **200** on the
+  synchronous fallback. Client polls `GET /v0/documents/{id}` until
+  `pending_review` / `failed`. Edit / confirm / reject endpoints unchanged.
+
+### Tests
+
+- `internal/usecase/recognition_async_test.go` — upload enqueues & returns
+  `uploaded`; worker → `pending_review` + extracted data; retry-then-succeed
+  (with backoff + stepped clock); give-up after max attempts; `confirmed` skipped;
+  worker stops on context cancel. Uses an in-memory `RecognitionQueue` mirroring
+  the Postgres semantics.
+- `internal/adapters/httpapi/documents_test.go::TestDocumentAsyncUploadFlow` —
+  full HTTP path through the real in-process queue: 202 → poll → `pending_review`.
+- All tests pass under `go test -race`.

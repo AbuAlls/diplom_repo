@@ -5,14 +5,21 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log"
 	"mime/multipart"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
+	"diplom.com/m/internal/adapters/inprocqueue"
+	"diplom.com/m/internal/adapters/recognition"
+	"diplom.com/m/internal/auth"
 	"diplom.com/m/internal/domain"
 	"diplom.com/m/internal/ports"
+	"diplom.com/m/internal/usecase"
 )
 
 // --- in-memory repos for the documents milestone ---
@@ -34,6 +41,7 @@ func (m *memFolderRepo) FindOrCreateItemFolder(_ context.Context, planItemID, _ 
 }
 
 type memDocumentRepo struct {
+	mu     sync.Mutex
 	byID   map[int64]domain.Document
 	nextID int64
 }
@@ -43,6 +51,8 @@ func newMemDocumentRepo() *memDocumentRepo {
 }
 
 func (m *memDocumentRepo) Create(_ context.Context, in ports.DocumentCreate) (domain.Document, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.nextID++
 	now := time.Now()
 	d := domain.Document{
@@ -55,6 +65,8 @@ func (m *memDocumentRepo) Create(_ context.Context, in ports.DocumentCreate) (do
 }
 
 func (m *memDocumentRepo) GetByID(_ context.Context, id int64) (domain.Document, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	d, ok := m.byID[id]
 	if !ok {
 		return domain.Document{}, ports.ErrNotFound
@@ -63,6 +75,8 @@ func (m *memDocumentRepo) GetByID(_ context.Context, id int64) (domain.Document,
 }
 
 func (m *memDocumentRepo) ListByOwner(_ context.Context, ownerID int64, planItemID *int64, offset, limit int) ([]domain.Document, int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	var all []domain.Document
 	for _, d := range m.byID {
 		if d.UploadedBy != ownerID {
@@ -84,7 +98,37 @@ func (m *memDocumentRepo) ListByOwner(_ context.Context, ownerID int64, planItem
 	return all[offset:end], total, nil
 }
 
+func (m *memDocumentRepo) ListByOwners(_ context.Context, ownerIDs []int64, planItemID *int64, offset, limit int) ([]domain.Document, int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	owners := map[int64]bool{}
+	for _, id := range ownerIDs {
+		owners[id] = true
+	}
+	var all []domain.Document
+	for _, d := range m.byID {
+		if !owners[d.UploadedBy] {
+			continue
+		}
+		if planItemID != nil && d.PlanItemID != *planItemID {
+			continue
+		}
+		all = append(all, d)
+	}
+	total := len(all)
+	if offset > total {
+		offset = total
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	return all[offset:end], total, nil
+}
+
 func (m *memDocumentRepo) UpdateFields(_ context.Context, id int64, patch ports.DocumentPatch) (domain.Document, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	d, ok := m.byID[id]
 	if !ok {
 		return domain.Document{}, ports.ErrNotFound
@@ -131,6 +175,8 @@ func (m *memDocumentRepo) UpdateFields(_ context.Context, id int64, patch ports.
 }
 
 func (m *memDocumentRepo) UpdateStatus(_ context.Context, id int64, status string) (domain.Document, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	d, ok := m.byID[id]
 	if !ok {
 		return domain.Document{}, ports.ErrNotFound
@@ -141,7 +187,34 @@ func (m *memDocumentRepo) UpdateStatus(_ context.Context, id int64, status strin
 	return d, nil
 }
 
+func (m *memDocumentRepo) UpdateStatusSerializable(_ context.Context, id int64, status string, expectFrom ...string) (domain.Document, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	d, ok := m.byID[id]
+	if !ok {
+		return domain.Document{}, ports.ErrNotFound
+	}
+	if len(expectFrom) > 0 {
+		matched := false
+		for _, s := range expectFrom {
+			if d.Status == s {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return domain.Document{}, ports.ErrConflict
+		}
+	}
+	d.Status = status
+	d.UpdatedAt = time.Now()
+	m.byID[id] = d
+	return d, nil
+}
+
 func (m *memDocumentRepo) CountByPlanItem(_ context.Context, planItemID int64) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	n := 0
 	for _, d := range m.byID {
 		if d.PlanItemID == planItemID {
@@ -152,6 +225,8 @@ func (m *memDocumentRepo) CountByPlanItem(_ context.Context, planItemID int64) (
 }
 
 func (m *memDocumentRepo) LatestDocIDByPlanItem(_ context.Context, planItemID int64) (*int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	var latest int64
 	for _, d := range m.byID {
 		if d.PlanItemID == planItemID && d.ID > latest {
@@ -165,6 +240,7 @@ func (m *memDocumentRepo) LatestDocIDByPlanItem(_ context.Context, planItemID in
 }
 
 type memExtractedRepo struct {
+	mu    sync.Mutex
 	byDoc map[int64]domain.ExtractedData
 }
 
@@ -173,6 +249,8 @@ func newMemExtractedRepo() *memExtractedRepo {
 }
 
 func (m *memExtractedRepo) Create(_ context.Context, in ports.ExtractedDataCreate) (domain.ExtractedData, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	e := domain.ExtractedData{
 		ID: in.DocumentID, DocumentID: in.DocumentID, RecognizedText: in.RecognizedText,
 		StructuredJSON: in.StructuredJSON, RecognizedCategoryID: in.RecognizedCategoryID,
@@ -184,6 +262,8 @@ func (m *memExtractedRepo) Create(_ context.Context, in ports.ExtractedDataCreat
 }
 
 func (m *memExtractedRepo) GetByDocumentID(_ context.Context, documentID int64) (domain.ExtractedData, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	e, ok := m.byDoc[documentID]
 	if !ok {
 		return domain.ExtractedData{}, ports.ErrNotFound
@@ -192,6 +272,8 @@ func (m *memExtractedRepo) GetByDocumentID(_ context.Context, documentID int64) 
 }
 
 func (m *memExtractedRepo) ListByDocumentIDs(_ context.Context, ids []int64) (map[int64]domain.ExtractedData, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	out := make(map[int64]domain.ExtractedData, len(ids))
 	for _, id := range ids {
 		if e, ok := m.byDoc[id]; ok {
@@ -202,6 +284,8 @@ func (m *memExtractedRepo) ListByDocumentIDs(_ context.Context, ids []int64) (ma
 }
 
 func (m *memExtractedRepo) UpdateCategory(_ context.Context, documentID int64, categoryID *int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	e, ok := m.byDoc[documentID]
 	if !ok {
 		return ports.ErrNotFound
@@ -212,6 +296,7 @@ func (m *memExtractedRepo) UpdateCategory(_ context.Context, documentID int64, c
 }
 
 type memFileStore struct {
+	mu    sync.Mutex
 	saved map[string][]byte
 }
 
@@ -222,11 +307,15 @@ func (m *memFileStore) Save(_ context.Context, key string, r io.Reader) (int64, 
 	if err != nil {
 		return 0, err
 	}
+	m.mu.Lock()
 	m.saved[key] = b
+	m.mu.Unlock()
 	return int64(len(b)), nil
 }
 
 func (m *memFileStore) Stat(_ context.Context, key string) (ports.FileStatus, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	b, ok := m.saved[key]
 	if !ok {
 		return ports.FileStatus{Key: key, Exists: false, StatusCode: http.StatusNotFound}, nil
@@ -243,6 +332,8 @@ func (m *memFileStore) Stat(_ context.Context, key string) (ports.FileStatus, er
 }
 
 func (m *memFileStore) Open(_ context.Context, key string) (ports.FileObject, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	b, ok := m.saved[key]
 	if !ok {
 		return ports.FileObject{}, ports.ErrNotFound
@@ -555,5 +646,80 @@ func TestDocumentNotFound(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", resp.StatusCode)
+	}
+}
+
+// TestDocumentAsyncUploadFlow exercises the asynchronous pipeline end to end
+// through HTTP: upload returns 202 with status `uploaded` and no extracted data,
+// the background worker then recognizes it, and a subsequent GET reflects
+// pending_review with recognized fields. It wires the real in-process queue
+// adapter so the producer→worker handoff is genuine.
+func TestDocumentAsyncUploadFlow(t *testing.T) {
+	users := newMemUserRepo()
+	plans := newMemPlanRepo()
+	goals := newMemGoalRepo()
+	items := newMemItemRepo()
+	folders := newMemFolderRepo()
+	docs := newMemDocumentRepo()
+	extracted := newMemExtractedRepo()
+	store := newMemFileStore()
+
+	docSvc := &usecase.DocumentService{
+		Docs: docs, Folders: folders, Items: items, Goals: goals, Plans: plans,
+		Store: store, Extracted: extracted, Recognizer: recognition.New(),
+	}
+	// Real in-process goroutine queue (Option A), driving ProcessRecognition.
+	queue := inprocqueue.New(docSvc, 16, 2, log.New(io.Discard, "", 0))
+	docSvc.Queue = queue
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go queue.Start(ctx)
+
+	tm := auth.TokenManager{Secret: []byte("test-secret"), Issuer: "test"}
+	api := &API{
+		Auth:  &usecase.AuthService{Users: users, Tokens: tm, AccessTTL: time.Hour, RefreshTTL: 24 * time.Hour},
+		Plans: &usecase.PlanService{Plans: plans},
+		Goals: &usecase.GoalService{Goals: goals, Plans: plans},
+		Items: &usecase.PlanItemService{Items: items, Goals: goals, Plans: plans},
+		Docs:  docSvc,
+	}
+	srv := httptest.NewServer(api.Routes())
+	defer srv.Close()
+
+	token := register(t, srv.URL, "async@example.com")
+	seedItem(t, srv.URL, token)
+
+	// Upload → 202 Accepted, status uploaded, no recognition yet.
+	resp := uploadDoc(t, srv.URL, token, 1, "invoice.pdf", "bytes")
+	var doc documentResponse
+	json.NewDecoder(resp.Body).Decode(&doc)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("expected 202 Accepted on async upload, got %d", resp.StatusCode)
+	}
+	if doc.Status != "uploaded" {
+		t.Fatalf("expected status uploaded, got %q", doc.Status)
+	}
+	if doc.RecognizedText != "" {
+		t.Fatalf("expected no recognized_text before the worker runs, got %q", doc.RecognizedText)
+	}
+
+	// Poll until the worker transitions the document to pending_review.
+	deadline := time.After(3 * time.Second)
+	for {
+		r := do(t, "GET", srv.URL+"/v0/documents/1", token, "")
+		json.NewDecoder(r.Body).Decode(&doc)
+		r.Body.Close()
+		if doc.Status == "pending_review" {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("document did not reach pending_review, last status %q", doc.Status)
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+	if doc.RecognizedText == "" || doc.ModelVersion == nil {
+		t.Fatalf("expected recognized data after worker ran, got %+v", doc)
 	}
 }

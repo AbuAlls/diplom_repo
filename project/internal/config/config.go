@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -26,6 +27,16 @@ type Config struct {
 	AIModel          string
 	AIRequestTimeout time.Duration
 	InternalAPIToken string // shared secret for the agent's /api/* callbacks
+
+	// Asynchronous recognition queue.
+	// RecognitionQueueKind selects the producer behind document upload:
+	//   "db"      (default) — durable Postgres-backed queue + polling worker (Option B)
+	//   "inproc"  — in-process goroutine pool, example-only/non-durable (Option A)
+	//   "sync"    — no queue; recognize inline during upload (legacy behavior)
+	RecognitionQueueKind    string
+	RecognitionPollInterval time.Duration // Option B: how often the worker polls
+	RecognitionRetryBackoff time.Duration // Option B: delay before retrying a failed job
+	RecognitionWorkers      int           // Option A: number of goroutine workers
 
 	// CORSAllowedOrigin is the Access-Control-Allow-Origin value sent on every
 	// response. Default "*" is safe here because auth is a Bearer header (not a
@@ -63,6 +74,11 @@ func Load() Config {
 		AIRequestTimeout: getDuration("AI_REQUEST_TIMEOUT", 60*time.Second),
 		InternalAPIToken: getenv("INTERNAL_API_TOKEN", "dev-internal-token-change-me"),
 
+		RecognitionQueueKind:    getenv("RECOGNITION_QUEUE", "db"),
+		RecognitionPollInterval: getDuration("RECOGNITION_POLL_INTERVAL", time.Second),
+		RecognitionRetryBackoff: getDuration("RECOGNITION_RETRY_BACKOFF", 30*time.Second),
+		RecognitionWorkers:      getInt("RECOGNITION_WORKERS", 4),
+
 		CORSAllowedOrigin: getenv("CORS_ALLOWED_ORIGIN", "*"),
 	}
 }
@@ -73,6 +89,18 @@ func getenv(k, def string) string {
 		return def
 	}
 	return v
+}
+
+func getInt(k string, def int) int {
+	v := os.Getenv(k)
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return def
+	}
+	return n
 }
 
 func getDuration(k string, def time.Duration) time.Duration {

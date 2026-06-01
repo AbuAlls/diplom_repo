@@ -15,6 +15,7 @@ type API struct {
 	Goals     *usecase.GoalService
 	Items     *usecase.PlanItemService
 	Docs      *usecase.DocumentService
+	Groups    *usecase.GroupService
 	Analytics *usecase.AnalyticsService
 	// InternalAnalytics backs the AI agent's read-only DB callbacks.
 	InternalAnalytics *usecase.InternalAnalyticsService
@@ -54,6 +55,14 @@ func (a *API) Routes() http.Handler {
 	mux.Handle("GET /v0/documents/{id_document}/storage", a.authenticated(a.getDocumentStorage))
 	mux.Handle("GET /v0/documents/{id_document}", a.authenticated(a.getDocument))
 	mux.Handle("PATCH /v0/documents/{id_document}", a.authenticated(a.patchDocument))
+
+	// Corporate-account groups: shared workspaces where every member sees one
+	// another's plans and documents.
+	mux.Handle("GET /v0/groups", a.authenticated(a.listGroups))
+	mux.Handle("POST /v0/groups", a.authenticated(a.createGroup))
+	mux.Handle("GET /v0/groups/{id_group}", a.authenticated(a.getGroup))
+	mux.Handle("POST /v0/groups/{id_group}/members", a.authenticated(a.addGroupMember))
+	mux.Handle("DELETE /v0/groups/{id_group}/members/{id_member}", a.authenticated(a.removeGroupMember))
 
 	mux.Handle("GET /v0/items/{id_item}/analytics", a.authenticated(a.getItemAnalytics))
 	mux.Handle("POST /v0/items/{id_item}/analyze", a.authenticated(a.analyzeItem))

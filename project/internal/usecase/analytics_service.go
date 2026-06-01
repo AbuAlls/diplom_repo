@@ -14,6 +14,7 @@ type AnalyticsService struct {
 	Items    ports.PlanItemRepo
 	Goals    ports.GoalRepo
 	Plans    ports.PlanRepo
+	Groups   ports.GroupRepo
 	Docs     ports.DocumentRepo
 	Analyzer ports.Analyzer
 	// Sessions maps per-analyze-call nonces to ownerIDs so the AI agent's
@@ -31,7 +32,7 @@ type ItemAnalytics struct {
 }
 
 func (s *AnalyticsService) ItemAnalytics(ctx context.Context, ownerID, itemID int64) (ItemAnalytics, error) {
-	item, err := requireItemByID(ctx, s.Items, s.Goals, s.Plans, itemID, ownerID)
+	item, err := requireItemByID(ctx, s.Items, s.Goals, s.Plans, s.Groups, itemID, ownerID)
 	if err != nil {
 		return ItemAnalytics{}, err
 	}
@@ -64,7 +65,7 @@ func (s *AnalyticsService) Recommendations(ctx context.Context, ownerID, itemID 
 	if s.Analyzer == nil {
 		return "", ErrValidation
 	}
-	if _, err := requireItemByID(ctx, s.Items, s.Goals, s.Plans, itemID, ownerID); err != nil {
+	if _, err := requireItemByID(ctx, s.Items, s.Goals, s.Plans, s.Groups, itemID, ownerID); err != nil {
 		return "", err
 	}
 

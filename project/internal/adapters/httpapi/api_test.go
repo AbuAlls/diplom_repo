@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -79,6 +80,28 @@ func (m *memPlanRepo) ListByOwner(_ context.Context, ownerID int64, offset, limi
 	var all []domain.Plan
 	for _, p := range m.byID {
 		if p.CreatedBy == ownerID {
+			all = append(all, p)
+		}
+	}
+	total := len(all)
+	if offset > total {
+		offset = total
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	return all[offset:end], total, nil
+}
+
+func (m *memPlanRepo) ListByOwners(_ context.Context, ownerIDs []int64, offset, limit int) ([]domain.Plan, int, error) {
+	owners := map[int64]bool{}
+	for _, id := range ownerIDs {
+		owners[id] = true
+	}
+	var all []domain.Plan
+	for _, p := range m.byID {
+		if owners[p.CreatedBy] {
 			all = append(all, p)
 		}
 	}
@@ -176,13 +199,126 @@ func (m *memItemRepo) Update(_ context.Context, id int64, patch ports.PlanItemPa
 	return it, nil
 }
 
+// --- in-memory group repo ---
+
+type memGroupRepo struct {
+	mu      sync.Mutex
+	byID    map[int64]domain.Group
+	members map[int64]map[int64]bool // groupID -> set of userIDs
+	users   *memUserRepo
+	nextID  int64
+}
+
+func newMemGroupRepo(users *memUserRepo) *memGroupRepo {
+	return &memGroupRepo{byID: map[int64]domain.Group{}, members: map[int64]map[int64]bool{}, users: users}
+}
+
+func (m *memGroupRepo) Create(_ context.Context, createdBy int64, name, description string) (domain.Group, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.nextID++
+	cb := createdBy
+	g := domain.Group{ID: m.nextID, Name: name, Description: description, Role: "corporate", CreatedBy: &cb, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	m.byID[g.ID] = g
+	m.members[g.ID] = map[int64]bool{createdBy: true}
+	return g, nil
+}
+
+func (m *memGroupRepo) GetByID(_ context.Context, id int64) (domain.Group, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	g, ok := m.byID[id]
+	if !ok {
+		return domain.Group{}, ports.ErrNotFound
+	}
+	return g, nil
+}
+
+func (m *memGroupRepo) ListByMember(_ context.Context, userID int64, offset, limit int) ([]domain.Group, int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var all []domain.Group
+	for gid, set := range m.members {
+		if set[userID] {
+			all = append(all, m.byID[gid])
+		}
+	}
+	return all, len(all), nil
+}
+
+func (m *memGroupRepo) AddMember(_ context.Context, groupID, userID int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.members[groupID] == nil {
+		m.members[groupID] = map[int64]bool{}
+	}
+	m.members[groupID][userID] = true
+	return nil
+}
+
+func (m *memGroupRepo) RemoveMember(_ context.Context, groupID, userID int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.members[groupID], userID)
+	return nil
+}
+
+func (m *memGroupRepo) ListMembers(_ context.Context, groupID int64) ([]domain.GroupMember, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []domain.GroupMember
+	for uid := range m.members[groupID] {
+		u := m.users.byID[uid]
+		out = append(out, domain.GroupMember{UserID: uid, GroupID: groupID, Email: u.Email, FullName: u.FullName})
+	}
+	return out, nil
+}
+
+func (m *memGroupRepo) IsMember(_ context.Context, groupID, userID int64) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.members[groupID][userID], nil
+}
+
+func (m *memGroupRepo) CoMemberIDs(_ context.Context, userID int64) ([]int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	ids := []int64{userID}
+	seen := map[int64]bool{userID: true}
+	for gid, set := range m.members {
+		if !set[userID] {
+			continue
+		}
+		for uid := range m.members[gid] {
+			if !seen[uid] {
+				seen[uid] = true
+				ids = append(ids, uid)
+			}
+		}
+	}
+	return ids, nil
+}
+
 // --- test harness ---
 
 func newTestServer() (*httptest.Server, *memPlanRepo) {
+	srv, deps := newTestServerWithDeps()
+	return srv, deps.plans
+}
+
+// testDeps exposes the in-memory repos a few tests need to assert against.
+type testDeps struct {
+	plans  *memPlanRepo
+	groups *memGroupRepo
+	users  *memUserRepo
+}
+
+func newTestServerWithDeps() (*httptest.Server, testDeps) {
 	users := newMemUserRepo()
 	plans := newMemPlanRepo()
 	goals := newMemGoalRepo()
 	items := newMemItemRepo()
+	groups := newMemGroupRepo(users)
 
 	folders := newMemFolderRepo()
 	docs := newMemDocumentRepo()
@@ -193,23 +329,24 @@ func newTestServer() (*httptest.Server, *memPlanRepo) {
 	tm := auth.TokenManager{Secret: []byte("test-secret"), Issuer: "test"}
 	authSvc := &usecase.AuthService{Users: users, Tokens: tm, AccessTTL: time.Hour, RefreshTTL: 24 * time.Hour}
 	api := &API{
-		Auth:  authSvc,
-		Plans: &usecase.PlanService{Plans: plans},
-		Goals: &usecase.GoalService{Goals: goals, Plans: plans},
-		Items: &usecase.PlanItemService{Items: items, Goals: goals, Plans: plans},
+		Auth:   authSvc,
+		Plans:  &usecase.PlanService{Plans: plans, Groups: groups},
+		Goals:  &usecase.GoalService{Goals: goals, Plans: plans, Groups: groups},
+		Items:  &usecase.PlanItemService{Items: items, Goals: goals, Plans: plans, Groups: groups},
+		Groups: &usecase.GroupService{Groups: groups, Users: users},
 		Docs: &usecase.DocumentService{
-			Docs: docs, Folders: folders, Items: items, Goals: goals, Plans: plans,
+			Docs: docs, Folders: folders, Items: items, Goals: goals, Plans: plans, Groups: groups,
 			Store: store, Extracted: extracted, Recognizer: recognizer,
 		},
 		Analytics: &usecase.AnalyticsService{
-			Items: items, Goals: goals, Plans: plans, Docs: docs,
+			Items: items, Goals: goals, Plans: plans, Groups: groups, Docs: docs,
 			Analyzer: &fakeAnalyzer{}, Sessions: usecase.NewSessionStore(),
 		},
 		InternalAnalytics: &usecase.InternalAnalyticsService{Query: &fakeQueryRepo{}},
 		InternalToken:     testInternalToken,
 		Sessions:          usecase.NewSessionStore(),
 	}
-	return httptest.NewServer(api.Routes()), plans
+	return httptest.NewServer(api.Routes()), testDeps{plans: plans, groups: groups, users: users}
 }
 
 func register(t *testing.T, base, email string) string {

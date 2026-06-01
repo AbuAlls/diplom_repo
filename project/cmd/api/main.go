@@ -10,6 +10,7 @@ import (
 
 	"diplom.com/m/internal/adapters/auditai"
 	httpapi "diplom.com/m/internal/adapters/httpapi"
+	"diplom.com/m/internal/adapters/inprocqueue"
 	"diplom.com/m/internal/adapters/pganalysis"
 	"diplom.com/m/internal/adapters/pgcore"
 	"diplom.com/m/internal/adapters/recognition"
@@ -42,6 +43,7 @@ func main() {
 	goalRepo := pgcore.NewGoalRepo(coreStore)
 	itemRepo := pgcore.NewPlanItemRepo(coreStore)
 	folderRepo := pgcore.NewFolderRepo(coreStore)
+	groupRepo := pgcore.NewGroupRepo(coreStore)
 	docRepo := pgcore.NewDocumentRepo(coreStore)
 	extractedRepo := pganalysis.NewExtractedDataRepo(analysisStore)
 	queryRepo := pgcore.NewAnalyticsQueryRepo(coreStore)
@@ -67,22 +69,49 @@ func main() {
 		AccessTTL:  cfg.AccessTokenTTL,
 		RefreshTTL: cfg.RefreshTokenTTL,
 	}
-	planSvc := &usecase.PlanService{Plans: planRepo}
-	goalSvc := &usecase.GoalService{Goals: goalRepo, Plans: planRepo}
-	itemSvc := &usecase.PlanItemService{Items: itemRepo, Goals: goalRepo, Plans: planRepo}
+	groupSvc := &usecase.GroupService{Groups: groupRepo, Users: userRepo}
+	planSvc := &usecase.PlanService{Plans: planRepo, Groups: groupRepo}
+	goalSvc := &usecase.GoalService{Goals: goalRepo, Plans: planRepo, Groups: groupRepo}
+	itemSvc := &usecase.PlanItemService{Items: itemRepo, Goals: goalRepo, Plans: planRepo, Groups: groupRepo}
 	docSvc := &usecase.DocumentService{
 		Docs:       docRepo,
 		Folders:    folderRepo,
 		Items:      itemRepo,
 		Goals:      goalRepo,
 		Plans:      planRepo,
+		Groups:     groupRepo,
 		Store:      fileStore,
 		Extracted:  extractedRepo,
 		Recognizer: recognizer,
 	}
+
+	// Select how uploaded documents are recognized:
+	//   db     → durable Postgres queue + polling worker (Option B, default)
+	//   inproc → in-process goroutine pool (Option A, example-only/non-durable)
+	//   sync   → inline recognition during upload (legacy synchronous behavior)
+	switch cfg.RecognitionQueueKind {
+	case "inproc":
+		q := inprocqueue.New(docSvc, 256, cfg.RecognitionWorkers, nil)
+		docSvc.Queue = q
+		go q.Start(ctx)
+		log.Printf("recognition queue: in-process goroutines (%d workers, example-only)", cfg.RecognitionWorkers)
+	case "sync":
+		log.Printf("recognition queue: disabled (synchronous inline recognition)")
+	default: // "db"
+		queueRepo := pgcore.NewRecognitionQueueRepo(coreStore)
+		docSvc.Queue = queueRepo
+		worker := &usecase.RecognitionWorker{
+			Queue:        queueRepo,
+			Processor:    docSvc,
+			PollInterval: cfg.RecognitionPollInterval,
+			RetryBackoff: cfg.RecognitionRetryBackoff,
+		}
+		go worker.Run(ctx)
+		log.Printf("recognition queue: postgres-backed (poll %s, backoff %s)", cfg.RecognitionPollInterval, cfg.RecognitionRetryBackoff)
+	}
 	sessions := usecase.NewSessionStore()
 	analyticsSvc := &usecase.AnalyticsService{
-		Items: itemRepo, Goals: goalRepo, Plans: planRepo, Docs: docRepo,
+		Items: itemRepo, Goals: goalRepo, Plans: planRepo, Groups: groupRepo, Docs: docRepo,
 		Analyzer: aiClient, Sessions: sessions,
 	}
 	internalAnalyticsSvc := &usecase.InternalAnalyticsService{Query: queryRepo}
@@ -93,6 +122,7 @@ func main() {
 		Goals:             goalSvc,
 		Items:             itemSvc,
 		Docs:              docSvc,
+		Groups:            groupSvc,
 		Analytics:         analyticsSvc,
 		InternalAnalytics: internalAnalyticsSvc,
 		InternalToken:     cfg.InternalAPIToken,

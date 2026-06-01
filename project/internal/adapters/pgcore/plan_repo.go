@@ -57,4 +57,34 @@ limit $2 offset $3`
 	return out, total, rows.Err()
 }
 
+func (r *PlanRepo) ListByOwners(ctx context.Context, ownerIDs []int64, offset, limit int) ([]domain.Plan, int, error) {
+	if len(ownerIDs) == 0 {
+		return []domain.Plan{}, 0, nil
+	}
+	var total int
+	if err := r.Store.Pool.QueryRow(ctx, `select count(*) from plans where created_by = any($1)`, ownerIDs).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	const q = `
+select id, name, description, created_by, status, created_at, updated_at
+from plans
+where created_by = any($1)
+order by created_at desc, id desc
+limit $2 offset $3`
+	rows, err := r.Store.Pool.Query(ctx, q, ownerIDs, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	out := make([]domain.Plan, 0, limit)
+	for rows.Next() {
+		var p domain.Plan
+		if err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.CreatedBy, &p.Status, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			return nil, 0, err
+		}
+		out = append(out, p)
+	}
+	return out, total, rows.Err()
+}
+
 var _ ports.PlanRepo = (*PlanRepo)(nil)

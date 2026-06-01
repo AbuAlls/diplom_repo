@@ -125,6 +125,53 @@ func toGoal(g domain.Goal) goalResponse {
 	}
 }
 
+// --- group (corporate account) DTOs ---
+
+type groupResponse struct {
+	ID          int64     `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	Role        string    `json:"role"`
+	CreatedBy   *int64    `json:"created_by"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type groupMemberResponse struct {
+	UserID   int64  `json:"user_id"`
+	Email    string `json:"email"`
+	FullName string `json:"full_name"`
+}
+
+type groupDetailResponse struct {
+	groupResponse
+	Members []groupMemberResponse `json:"members"`
+}
+
+func toGroup(g domain.Group) groupResponse {
+	return groupResponse{
+		ID:          g.ID,
+		Name:        g.Name,
+		Description: g.Description,
+		Role:        g.Role,
+		CreatedBy:   g.CreatedBy,
+		CreatedAt:   g.CreatedAt,
+		UpdatedAt:   g.UpdatedAt,
+	}
+}
+
+func toGroupMember(m domain.GroupMember) groupMemberResponse {
+	return groupMemberResponse{UserID: m.UserID, Email: m.Email, FullName: m.FullName}
+}
+
+func toGroupDetail(g domain.Group, members []domain.GroupMember) groupDetailResponse {
+	ms := make([]groupMemberResponse, 0, len(members))
+	for _, m := range members {
+		ms = append(ms, toGroupMember(m))
+	}
+	return groupDetailResponse{groupResponse: toGroup(g), Members: ms}
+}
+
 type documentResponse struct {
 	ID                   int64           `json:"id"`
 	PlanItemID           int64           `json:"plan_item_id"`

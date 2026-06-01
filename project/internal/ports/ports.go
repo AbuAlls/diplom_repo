@@ -13,6 +13,12 @@ import (
 // ErrNotFound is returned by repositories when a requested row does not exist.
 var ErrNotFound = errors.New("not found")
 
+// ErrConflict is returned by repositories when an operation is invalid for the
+// row's current state — e.g. a conditional status transition whose precondition
+// failed. The use case re-exports this as usecase.ErrConflict so handlers map it
+// to HTTP 409.
+var ErrConflict = errors.New("conflict")
+
 type UserDTO struct {
 	ID           int64
 	Email        string
@@ -26,10 +32,38 @@ type UserRepo interface {
 	GetByID(ctx context.Context, id int64) (UserDTO, error)
 }
 
+// GroupRepo manages corporate-account groups and their membership. Membership
+// is the basis for shared access: AreCoMembers reports whether two users belong
+// to at least one common group, and CoMemberIDs lists everyone who shares a
+// group with a user (including the user). Access checks use these to widen
+// ownership from a single user to the set of users in their corporate accounts.
+type GroupRepo interface {
+	Create(ctx context.Context, createdBy int64, name, description string) (domain.Group, error)
+	GetByID(ctx context.Context, id int64) (domain.Group, error)
+	// ListByMember returns the groups a user belongs to.
+	ListByMember(ctx context.Context, userID int64, offset, limit int) (items []domain.Group, total int, err error)
+	// AddMember adds userID to groupID. Idempotent: re-adding an existing
+	// member is a no-op (no error).
+	AddMember(ctx context.Context, groupID, userID int64) error
+	// RemoveMember removes userID from groupID.
+	RemoveMember(ctx context.Context, groupID, userID int64) error
+	// ListMembers returns the members of a group joined with user identity.
+	ListMembers(ctx context.Context, groupID int64) ([]domain.GroupMember, error)
+	// IsMember reports whether userID belongs to groupID.
+	IsMember(ctx context.Context, groupID, userID int64) (bool, error)
+	// CoMemberIDs returns the set of user IDs that share at least one group
+	// with userID, always including userID itself. Used to expand an access
+	// check from "the owner" to "the owner's corporate-account peers".
+	CoMemberIDs(ctx context.Context, userID int64) ([]int64, error)
+}
+
 type PlanRepo interface {
 	Create(ctx context.Context, ownerID int64, name string, description *string, status string) (domain.Plan, error)
 	GetByID(ctx context.Context, id int64) (domain.Plan, error)
 	ListByOwner(ctx context.Context, ownerID int64, offset, limit int) (items []domain.Plan, total int, err error)
+	// ListByOwners lists plans created by any of ownerIDs (used to surface a
+	// corporate account's shared plans across all members).
+	ListByOwners(ctx context.Context, ownerIDs []int64, offset, limit int) (items []domain.Plan, total int, err error)
 }
 
 type GoalRepo interface {
@@ -106,8 +140,20 @@ type DocumentRepo interface {
 	Create(ctx context.Context, in DocumentCreate) (domain.Document, error)
 	GetByID(ctx context.Context, id int64) (domain.Document, error)
 	ListByOwner(ctx context.Context, ownerID int64, planItemID *int64, offset, limit int) (items []domain.Document, total int, err error)
+	// ListByOwners lists documents uploaded by any of ownerIDs, optionally
+	// filtered to a plan item. Used to show a corporate account's shared
+	// documents across all members.
+	ListByOwners(ctx context.Context, ownerIDs []int64, planItemID *int64, offset, limit int) (items []domain.Document, total int, err error)
 	UpdateFields(ctx context.Context, id int64, patch DocumentPatch) (domain.Document, error)
 	UpdateStatus(ctx context.Context, id int64, status string) (domain.Document, error)
+	// UpdateStatusSerializable performs the same status transition as
+	// UpdateStatus but inside a SERIALIZABLE transaction, retrying on
+	// serialization failures (SQLSTATE 40001). It guards against lost updates
+	// when several corporate-account members (or the async worker plus a member)
+	// race on the same shared document. expectFrom, when non-empty, makes the
+	// transition conditional: the row is only updated if its current status is
+	// one of those values, otherwise ErrConflict is returned.
+	UpdateStatusSerializable(ctx context.Context, id int64, status string, expectFrom ...string) (domain.Document, error)
 	CountByPlanItem(ctx context.Context, planItemID int64) (int, error)
 	LatestDocIDByPlanItem(ctx context.Context, planItemID int64) (*int64, error)
 }
@@ -186,6 +232,43 @@ type RecognizeResult struct {
 // Recognizer is the OCR/LLM analysis port. The v0 implementation is a deterministic mock.
 type Recognizer interface {
 	Recognize(ctx context.Context, in RecognizeInput) (RecognizeResult, error)
+}
+
+// RecognitionJob is one unit of background recognition work, as handed to the
+// worker by the queue. Attempts is how many times it has already failed;
+// MaxAttempts is the give-up threshold.
+type RecognitionJob struct {
+	ID          int64
+	DocumentID  int64
+	Attempts    int
+	MaxAttempts int
+}
+
+// RecognitionEnqueuer is the producer-side seam used by DocumentService to hand
+// a freshly uploaded document off for asynchronous recognition. Keeping it this
+// narrow lets the use case stay ignorant of how the work is actually run
+// (DB-backed polling queue, in-process goroutines, or a future message broker).
+type RecognitionEnqueuer interface {
+	// Enqueue schedules documentID for recognition and returns immediately.
+	Enqueue(ctx context.Context, documentID int64) error
+}
+
+// RecognitionQueue is the full durable queue contract driven by the polling
+// worker (Option B). Enqueue is the producer side; Claim/Complete/Fail are the
+// consumer side. A single Postgres-backed implementation provides all of them;
+// the worker only ever sees this interface.
+type RecognitionQueue interface {
+	RecognitionEnqueuer
+	// Claim atomically reserves the next runnable job and marks it running.
+	// ok is false when there is nothing to do. Implementations must be safe
+	// for concurrent callers (e.g. FOR UPDATE SKIP LOCKED).
+	Claim(ctx context.Context) (job RecognitionJob, ok bool, err error)
+	// Complete marks a claimed job finished successfully.
+	Complete(ctx context.Context, jobID int64) error
+	// Fail records a failed attempt: it increments the attempt counter and
+	// either re-queues the job to run again after retryIn, or marks it failed
+	// once the attempts reach MaxAttempts.
+	Fail(ctx context.Context, jobID int64, cause string, retryIn time.Duration) error
 }
 
 // Analyzer runs the business-analytics agent and returns its recommendations.

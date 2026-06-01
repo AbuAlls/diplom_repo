@@ -36,6 +36,10 @@ func (f *fakePlanRepo) ListByOwner(_ context.Context, _ int64, _, _ int) ([]doma
 	return f.list, f.total, nil
 }
 
+func (f *fakePlanRepo) ListByOwners(_ context.Context, _ []int64, _, _ int) ([]domain.Plan, int, error) {
+	return f.list, f.total, nil
+}
+
 func TestPlanServiceCreateDefaultsStatus(t *testing.T) {
 	repo := &fakePlanRepo{}
 	svc := &PlanService{Plans: repo}

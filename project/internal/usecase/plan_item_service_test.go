@@ -20,6 +20,9 @@ func (s stubPlanRepo) GetByID(context.Context, int64) (domain.Plan, error) { ret
 func (s stubPlanRepo) ListByOwner(context.Context, int64, int, int) ([]domain.Plan, int, error) {
 	return nil, 0, nil
 }
+func (s stubPlanRepo) ListByOwners(context.Context, []int64, int, int) ([]domain.Plan, int, error) {
+	return nil, 0, nil
+}
 
 type stubGoalRepo struct {
 	goal domain.Goal
