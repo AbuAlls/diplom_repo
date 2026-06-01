@@ -23,14 +23,14 @@ func (r *UserRepo) GetByEmail(ctx context.Context, email string) (ports.UserDTO,
 	const q = `select id, email, full_name, password_hash from users where email = $1`
 	var u ports.UserDTO
 	err := r.Store.Pool.QueryRow(ctx, q, email).Scan(&u.ID, &u.Email, &u.FullName, &u.PasswordHash)
-	return u, err
+	return u, mapErr(err)
 }
 
 func (r *UserRepo) GetByID(ctx context.Context, id int64) (ports.UserDTO, error) {
 	const q = `select id, email, full_name, password_hash from users where id = $1`
 	var u ports.UserDTO
 	err := r.Store.Pool.QueryRow(ctx, q, id).Scan(&u.ID, &u.Email, &u.FullName, &u.PasswordHash)
-	return u, err
+	return u, mapErr(err)
 }
 
 var _ ports.UserRepo = (*UserRepo)(nil)

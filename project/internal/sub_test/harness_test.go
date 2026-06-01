@@ -620,7 +620,9 @@ func newHarness(t *testing.T) *harness {
 		Sessions:          sessions,
 	}
 
-	srv := httptest.NewServer(api.Routes())
+	// Wrap with WithCORS exactly like cmd/api/main.go, so the browser-facing
+	// CORS behavior the frontend depends on is exercised too.
+	srv := httptest.NewServer(httpapi.WithCORS(api.Routes(), "*"))
 	analyzer.baseURL = srv.URL // close the construction loop
 	t.Cleanup(srv.Close)
 
