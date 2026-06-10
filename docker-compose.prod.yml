@@ -120,7 +120,10 @@ services:
         condition: service_healthy
     environment:
       # Empty -> Caddy serves plain HTTP on :80. Set to your domain for auto-HTTPS.
-      SITE_ADDRESS: ${SITE_ADDRESS:-}
+      # Default :80 (plain HTTP) so Caddy always has a valid site address — an
+      # empty value crashes Caddy ("server block without any key"). Override with
+      # a domain in .env.prod for automatic HTTPS.
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
     ports:
       - "80:80"
       - "443:443"

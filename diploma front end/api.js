@@ -2,7 +2,10 @@
    Оборачивает REST-эндпоинты Go-бэкенда (см. project/internal/adapters/httpapi).
    Всё авторизуется Bearer-токеном; токен хранится в localStorage. */
 (function () {
-  const BASE = window.API_BASE || 'http://localhost:8080';
+  // Same-origin is represented by API_BASE = '' (empty string). Use a typeof
+  // check, NOT `|| fallback`, because '' is falsy and would wrongly fall back to
+  // :8080 — which the production Caddy setup does not expose, breaking fetches.
+  const BASE = (typeof window.API_BASE === 'string') ? window.API_BASE : 'http://localhost:8080';
   const TOKEN_KEY = 'access_token';
   const EMAIL_KEY = 'user_email';
   const NAME_KEY = 'user_name';
