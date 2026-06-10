@@ -1,39 +1,73 @@
-# Caddy reverse proxy for the docsapp backend.
+# Caddy: serves the static frontend AND reverse-proxies the API on ONE origin.
 #
-# One file works in two modes, driven by the SITE_ADDRESS env var:
+#   https://YOURDOMAIN/            -> static frontend (diploma front end/)
+#   https://YOURDOMAIN/v0/...      -> Go API
+#   https://YOURDOMAIN/api/...     -> Go API (AI-service callbacks)
+#   https://YOURDOMAIN/healthz     -> Go API health
 #
-#   SITE_ADDRESS unset  -> Caddy listens on :80 (plain HTTP, no cert attempts).
-#                          Use this behind a tunnel (cloudflared/ngrok) or for a
-#                          local production simulation.
+# Same-origin means the browser frontend talks to the API with relative paths
+# (/v0/...), so there is no CORS and no second domain to manage.
 #
-#   SITE_ADDRESS=api.example.com -> Caddy serves HTTPS on that domain and
-#                          AUTOMATICALLY provisions + renews a Let's Encrypt
-#                          certificate. Requires ports 80+443 reachable and the
-#                          domain's DNS A-record pointing at this host.
+# Driven by SITE_ADDRESS:
+#   unset           -> plain HTTP on :80 (local test / behind a tunnel)
+#   api.example.com -> automatic Let's Encrypt HTTPS for that domain
 #
 # TLS terminates here; the Go API keeps speaking plain HTTP on :8080 internally.
+
+# rate_limit is a plugin (github.com/mholt/caddy-ratelimit, baked in via
+# Dockerfile.caddy); this global option tells Caddy where it sits in the
+# handler chain.
+{
+	order rate_limit before basicauth
+}
+
 {$SITE_ADDRESS::80} {
 	encode gzip
 
 	# Cap request bodies a little above the app's 32 MiB upload limit
-	# (maxUploadBytes in internal/adapters/httpapi/documents.go) so oversized
-	# uploads are rejected at the edge instead of streaming through.
+	# (maxUploadBytes in internal/adapters/httpapi/documents.go).
 	request_body {
 		max_size 35MB
 	}
 
-	# Optional hardening: /api/* are AI-service callbacks guarded by a shared
-	# secret (X-Internal-Token). If your AI service runs on THIS host (not a
-	# remote caller), it never needs public reachability — uncomment to block it
-	# from the internet entirely:
-	#
-	# @internal path /api/*
-	# respond @internal 403
+	# Weak, demo-grade DDoS speed bump: throttle each client IP to ~120 requests
+	# per 10s window (≈12 req/s burst). Plenty for normal demo use; just enough to
+	# blunt a casual flood. Over the limit -> HTTP 429. This is NOT real DDoS
+	# protection (that needs an upstream like Cloudflare) — it only limits per-IP
+	# request rate at this server.
+	rate_limit {
+		zone demo {
+			key {remote_host}
+			events 120
+			window 10s
+		}
+	}
 
-	reverse_proxy api:8080 {
-		# Use the app's unauthenticated health endpoint for upstream checks.
-		health_uri /healthz
-		health_interval 10s
-		health_timeout 3s
+	# --- API: backend paths go to the Go server ---
+	@api path /v0/* /api/* /healthz
+	handle @api {
+		# Optional hardening: /api/* are AI-service callbacks guarded by a shared
+		# secret. If the AI service runs on THIS host (not a remote caller),
+		# uncomment to forbid them from the public internet:
+		#
+		# @internal path /api/*
+		# respond @internal 403
+
+		reverse_proxy api:8080 {
+			health_uri /healthz
+			health_interval 10s
+			health_timeout 3s
+		}
+	}
+
+	# --- Frontend: serve the static SPA for everything else ---
+	handle {
+		root * /srv/frontend
+		# Serve .jsx as JavaScript so the in-browser Babel loader is never tripped
+		# up by an unexpected content type.
+		@jsx path *.jsx
+		header @jsx Content-Type "application/javascript; charset=utf-8"
+		try_files {path} /index.html
+		file_server
 	}
 }

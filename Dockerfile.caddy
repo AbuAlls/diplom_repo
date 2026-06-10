@@ -1,0 +1,16 @@
+# syntax=docker/dockerfile:1.6
+#
+# Caddy + the rate-limit plugin (github.com/mholt/caddy-ratelimit), which is NOT
+# in the stock caddy:2-alpine image. The builder stage compiles a custom caddy
+# binary with the plugin; the runtime stage is the normal alpine image with that
+# binary swapped in.
+#
+# If this build ever causes trouble right before the demo, you can fall back to
+# the stock image: in docker-compose.prod.yml set the caddy service back to
+# `image: caddy:2-alpine` and remove the `rate_limit` block from the Caddyfile.
+
+FROM caddy:2-builder-alpine AS builder
+RUN xcaddy build --with github.com/mholt/caddy-ratelimit
+
+FROM caddy:2-alpine
+COPY --from=builder /usr/bin/caddy /usr/bin/caddy

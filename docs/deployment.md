@@ -1,5 +1,12 @@
 # Deployment & public exposure
 
+> **Same-origin frontend.** The production Caddy config serves the static
+> frontend (`diploma front end/`) at `/` and proxies the API paths
+> (`/v0/*`, `/api/*`, `/healthz`) to the Go backend on the **same domain**. So
+> `https://YOURDOMAIN/` is the app and `https://YOURDOMAIN/v0/...` is the API —
+> one domain, one DNS record, no CORS. The frontend's `config.js` defaults to
+> same-origin (relative requests), so it just works wherever it's served.
+
 The Go API serves **plain HTTP on `:8080`** and is internal-only by default. To
 reach it from a frontend or mobile app over **HTTPS**, put a TLS terminator in
 front of it. Two paths, both delivered here:
@@ -121,8 +128,10 @@ for the always-on endpoint you show during the defense. This repo supports both.
 ## Topology & security notes
 
 ```
-public internet ──► caddy :80/:443 (TLS) ──► api:8080 ──► db:5432 / minio:9000
-                         (only public surface)        (internal compose network)
+                              ┌─ /            ─► static frontend (/srv/frontend)
+public internet ──► caddy ────┤
+       :80/:443 (TLS)         └─ /v0,/api,/healthz ─► api:8080 ─► db:5432 / minio:9000
+                  (only public surface)                   (internal compose network)
 ```
 
 - **Only Caddy is public.** `docker-compose.prod.yml` does **not** publish the db
@@ -136,6 +145,12 @@ public internet ──► caddy :80/:443 (TLS) ──► api:8080 ──► db:5
   `Caddyfile` to forbid them from the public internet entirely.
 - **Upload size.** Caddy caps request bodies at 35 MB, just above the app's
   32 MiB upload limit (`maxUploadBytes`).
+- **Rate limiting (demo-grade).** Caddy throttles each client IP to ~120
+  requests / 10s (over the limit → HTTP 429), via the `caddy-ratelimit` plugin
+  baked in by `Dockerfile.caddy`. This is a light speed bump, not real DDoS
+  protection — for that you'd front the server with Cloudflare. To disable it,
+  remove the `rate_limit` block from the `Caddyfile` and point the `caddy`
+  service back at `image: caddy:2-alpine`.
 
 ## nginx alternative
 

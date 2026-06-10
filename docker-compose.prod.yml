@@ -109,7 +109,12 @@ services:
     restart: unless-stopped
 
   caddy:
-    image: caddy:2-alpine
+    # Custom build: Caddy + the rate-limit plugin (see Dockerfile.caddy). To fall
+    # back to vanilla Caddy, replace this `build` with `image: caddy:2-alpine` and
+    # remove the rate_limit block from the Caddyfile.
+    build:
+      context: .
+      dockerfile: Dockerfile.caddy
     depends_on:
       api:
         condition: service_healthy
@@ -121,6 +126,7 @@ services:
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./diploma front end:/srv/frontend:ro   # static frontend served at /
       - caddy_data:/data    # persists issued certs across restarts
       - caddy_config:/config
     restart: unless-stopped
