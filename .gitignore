@@ -7,6 +7,9 @@
 *.env
 */*.env
 /project/*.env
+# Production secrets (.env.prod) — keep out of source control; commit only .env.prod.example.
+.env.prod
+.env.*.local
 *.dll
 *.so
 *.dylib

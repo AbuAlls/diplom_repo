@@ -1,0 +1,132 @@
+# Production topology: Caddy is the ONLY public surface (ports 80/443).
+# The API, Postgres and MinIO are reachable only on the internal compose network.
+#
+#   public internet ──► caddy :80/:443 (TLS) ──► api:8080 ──► db:5432 / minio:9000
+#
+# Run with:  make prod-up        (docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build)
+#
+# Contrast with docker-compose.yml (dev): that one publishes 8080/5432/9000/9001
+# to the host and runs the API via `go run`. This file publishes nothing except
+# Caddy and runs a compiled binary.
+
+services:
+  db:
+    image: postgres:17.2-bookworm
+    environment:
+      POSTGRES_DB: ${DB_NAME:-app}
+      POSTGRES_USER: ${DB_USER:-app}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-app}
+    # No host port published: only the api/migrate containers reach it.
+    volumes:
+      - pgdata_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-app} -d ${DB_NAME:-app}"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  # One-shot: apply core then analysis migrations into a fresh database, in
+  # filename order. Mirrors the minio-init pattern. Idempotent: it detects an
+  # already-initialized DB (presence of the `users` table) and exits 0 without
+  # re-applying, so `api` (gated on this completing) starts cleanly on every run.
+  # This is a first-boot initializer, not a tracked migration runner — see
+  # docs/deployment.md for adding golang-migrate later.
+  migrate:
+    image: postgres:17.2-bookworm
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${DB_PASSWORD:-app}
+    volumes:
+      - ./project/migrations:/migrations:ro
+    entrypoint: ["/bin/sh", "-lc"]
+    command:
+      - |
+        set -e
+        already=$$(psql -tA -h db -U ${DB_USER:-app} -d ${DB_NAME:-app} \
+          -c "select to_regclass('public.users') is not null")
+        if [ "$$already" = "t" ]; then
+          echo "database already initialized; skipping migrations"
+          exit 0
+        fi
+        for f in $$(ls /migrations/core/*.up.sql | sort) $$(ls /migrations/analysis/*.up.sql | sort); do
+          echo "applying $$f"
+          psql -v ON_ERROR_STOP=1 -h db -U ${DB_USER:-app} -d ${DB_NAME:-app} -f "$$f"
+        done
+        echo "migrations applied"
+    restart: "no"
+
+  minio:
+    image: minio/minio:RELEASE.2025-01-20T14-49-07Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin}
+    # No host ports published: document downloads stream through the API, so MinIO
+    # never needs to be reachable from the internet.
+    volumes:
+      - miniodata_prod:/data
+    restart: unless-stopped
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-01-17T23-25-50Z
+    depends_on:
+      - minio
+    entrypoint: ["/bin/sh", "-lc"]
+    command:
+      - |
+        i=0
+        until mc alias set local http://minio:9000 ${S3_ACCESS_KEY:-minioadmin} ${S3_SECRET_KEY:-minioadmin}; do
+          i=$$((i+1))
+          echo "waiting for minio... attempt=$$i"
+          sleep 1
+        done
+        mc mb -p local/${S3_BUCKET:-docsapp} || true
+        mc anonymous set none local/${S3_BUCKET:-docsapp} || true
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    env_file:
+      - .env.prod
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+    # No host port published: only Caddy reaches the API, on the internal network.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      # Empty -> Caddy serves plain HTTP on :80. Set to your domain for auto-HTTPS.
+      SITE_ADDRESS: ${SITE_ADDRESS:-}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data    # persists issued certs across restarts
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  pgdata_prod:
+  miniodata_prod:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,39 @@
+# Caddy reverse proxy for the docsapp backend.
+#
+# One file works in two modes, driven by the SITE_ADDRESS env var:
+#
+#   SITE_ADDRESS unset  -> Caddy listens on :80 (plain HTTP, no cert attempts).
+#                          Use this behind a tunnel (cloudflared/ngrok) or for a
+#                          local production simulation.
+#
+#   SITE_ADDRESS=api.example.com -> Caddy serves HTTPS on that domain and
+#                          AUTOMATICALLY provisions + renews a Let's Encrypt
+#                          certificate. Requires ports 80+443 reachable and the
+#                          domain's DNS A-record pointing at this host.
+#
+# TLS terminates here; the Go API keeps speaking plain HTTP on :8080 internally.
+{$SITE_ADDRESS::80} {
+	encode gzip
+
+	# Cap request bodies a little above the app's 32 MiB upload limit
+	# (maxUploadBytes in internal/adapters/httpapi/documents.go) so oversized
+	# uploads are rejected at the edge instead of streaming through.
+	request_body {
+		max_size 35MB
+	}
+
+	# Optional hardening: /api/* are AI-service callbacks guarded by a shared
+	# secret (X-Internal-Token). If your AI service runs on THIS host (not a
+	# remote caller), it never needs public reachability — uncomment to block it
+	# from the internet entirely:
+	#
+	# @internal path /api/*
+	# respond @internal 403
+
+	reverse_proxy api:8080 {
+		# Use the app's unauthenticated health endpoint for upstream checks.
+		health_uri /healthz
+		health_interval 10s
+		health_timeout 3s
+	}
+}

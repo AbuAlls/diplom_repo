@@ -1,0 +1,36 @@
+# syntax=docker/dockerfile:1.6
+#
+# Production image for the docsapp API: a compiled, static binary.
+# (The dev Dockerfile uses `go run` + runs tests on start for the devcontainer;
+# this one builds an optimized binary for deployment.)
+
+# --- Stage 1: build ---
+FROM golang:1.22-alpine AS build
+
+ENV CGO_ENABLED=0 GOOS=linux
+
+WORKDIR /src/project
+# Cache modules first.
+COPY project/go.mod project/go.sum ./
+RUN go mod download
+
+# Build.
+COPY project/ ./
+RUN go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api
+
+# --- Stage 2: runtime ---
+FROM alpine:3.20
+
+# ca-certificates lets the app make outbound HTTPS calls (e.g. AI service);
+# wget gives the compose healthcheck something to call /healthz with.
+RUN apk add --no-cache ca-certificates wget \
+	&& addgroup -S app && adduser -S app -G app
+
+WORKDIR /app
+COPY --from=build /out/api /app/api
+# Ship migrations so the one-shot migrate service (or an init step) can apply them.
+COPY project/migrations/ /app/migrations/
+
+USER app
+EXPOSE 8080
+ENTRYPOINT ["/app/api"]

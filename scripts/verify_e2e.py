@@ -83,4 +83,62 @@ st, an = req("GET", f"/v0/items/{iid}/analytics", token)
 ok("analytics 200", st == 200, st)
 print("    source_documents_count:", an.get("source_documents_count"), "progress:", an.get("progress_percent"))
 
+# --- 9: Corporate-account groups ---
+bob_email = f"bob_{int(time.time())}@test.ru"
+print("9) groups / corporate account")
+st, bob_reg = req("POST", "/v0/auth/register", jbody={"email": bob_email, "password": "password123", "full_name": "Bob"})
+ok("register bob 201", st == 201, st)
+bob_token = bob_reg["access_token"]
+
+# Alice creates a group.
+st, grp = req("POST", "/v0/groups", token, jbody={"name": "Acme Corp", "description": "shared workspace"})
+ok("create group 201", st == 201, st)
+gid_grp = grp["id"] if grp else None
+ok("group has id", bool(gid_grp), gid_grp)
+ok("group role=corporate", grp.get("role") == "corporate", grp.get("role"))
+
+# Alice adds Bob by email.
+st, member = req("POST", f"/v0/groups/{gid_grp}/members", token, jbody={"email": bob_email})
+ok("add member 201", st == 201, st)
+ok("member user_id present", bool(member and member.get("user_id")), member)
+
+# Group detail shows both members.
+st, detail = req("GET", f"/v0/groups/{gid_grp}", token)
+ok("get group 200", st == 200, st)
+ok("group has 2 members", len(detail.get("members", [])) == 2, len(detail.get("members", [])))
+
+# Bob (different account, same group) can see Alice's document.
+st, bob_docs = req("GET", "/v0/documents", bob_token)
+ok("bob sees shared docs (group access)", st == 200 and bob_docs["meta"]["total"] >= 1, bob_docs["meta"]["total"] if bob_docs else 0)
+
+# Bob can see Alice's plan in his plan list.
+st, bob_plans = req("GET", "/v0/plans", bob_token)
+ok("bob sees shared plans", st == 200 and bob_plans["meta"]["total"] >= 1, bob_plans["meta"]["total"] if bob_plans else 0)
+
+# Non-member (fresh outsider account) gets 403 on the group and 0 shared docs.
+eve_email = f"eve_{int(time.time())}@outside.ru"
+st, eve_reg = req("POST", "/v0/auth/register", jbody={"email": eve_email, "password": "password123", "full_name": "Eve"})
+eve_token = eve_reg["access_token"]
+st, _ = req("GET", f"/v0/groups/{gid_grp}", eve_token)
+ok("eve cannot access group (403)", st == 403, st)
+st, eve_docs = req("GET", "/v0/documents", eve_token)
+ok("eve sees no shared docs", st == 200 and eve_docs["meta"]["total"] == 0, eve_docs["meta"]["total"] if eve_docs else "err")
+
+# Creator can't remove themselves.
+st, _ = req("DELETE", f"/v0/groups/{gid_grp}/members/1", token)
+# (user IDs are sequential; Alice is id=1 if first registered in this run — use member id from detail)
+alice_uid = next((m["user_id"] for m in detail.get("members", []) if m.get("email") == email), None)
+if alice_uid:
+    st, _ = req("DELETE", f"/v0/groups/{gid_grp}/members/{alice_uid}", token)
+    ok("creator cannot remove self (409)", st == 409, st)
+
+# Bob's member_id
+bob_uid = member.get("user_id") if member else None
+if bob_uid:
+    st, _ = req("DELETE", f"/v0/groups/{gid_grp}/members/{bob_uid}", token)
+    ok("remove bob 204", st == 204, st)
+    # After removal Bob should see 0 shared docs.
+    st, bob_docs2 = req("GET", "/v0/documents", bob_token)
+    ok("bob sees 0 docs after removal from group", st == 200 and bob_docs2["meta"]["total"] == 0, bob_docs2["meta"]["total"] if bob_docs2 else "err")
+
 print("\nDONE")

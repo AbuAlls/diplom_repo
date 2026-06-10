@@ -43,16 +43,30 @@ Not part of the current MVP:
 
 ## Development topology
 
-During MVP development, mobile devices connect to the local backend through ngrok.
+During MVP development, mobile devices connect to the local backend through a
+quick tunnel (cloudflared or ngrok).
 
 Flow:
 
-mobile app -> HTTPS via ngrok -> local backend -> PostgreSQL / MinIO / analysis integration
+mobile app -> HTTPS via tunnel -> local backend -> PostgreSQL / MinIO / analysis integration
 
 This setup is used to:
 - test real mobile clients
 - avoid local TLS configuration complexity
 - validate API behavior on actual devices
+
+## Production topology
+
+For an always-on deployment (e.g. a small VPS) a Caddy reverse proxy sits in
+front of the API and is the only public surface:
+
+public internet -> Caddy :80/:443 (TLS) -> api:8080 -> PostgreSQL / MinIO
+
+Caddy terminates TLS and automatically provisions/renews a Let's Encrypt
+certificate when a domain is configured (`SITE_ADDRESS`); the Go API keeps
+speaking plain HTTP on `:8080` internally. The database and object storage are
+not published outside the compose network. The quick tunnel is still used for
+fast device tests. See `docs/deployment.md` for the full guide.
 
 ## Architectural style
 
