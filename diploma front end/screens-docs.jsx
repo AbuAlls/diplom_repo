@@ -261,8 +261,22 @@ function DocumentDetail({ doc, onBack }) {
 
   const d = full;
   const s = STATUS[d.status] || { label: d.status, badge: 'indigo' };
-  const demo = API.isDemo(); // аудит-проверки и риски — мок, только для демо
+  const demo = API.isDemo(); // запасной мок аудита/рисков — только для демо-аккаунта
+
+  // Аналитика из structured_json, который возвращает recognition-сервис
+  // (summary + checks + risks для каждого распознанного документа).
+  const sj = (() => {
+    const raw = d.structured_json;
+    if (!raw) return {};
+    if (typeof raw === 'string') { try { return JSON.parse(raw); } catch { return {}; } }
+    return raw; // уже объект
+  })();
   const mock = ANALYSIS[doc.id] || ANALYSIS.d1;
+  const summary = sj.summary || '';
+  const checks = Array.isArray(sj.checks) && sj.checks.length ? sj.checks
+                 : (demo ? mock.checks : []);
+  const risks = Array.isArray(sj.risks) && sj.risks.length ? sj.risks
+                : (demo ? mock.risks : []);
 
   // Извлечённые данные из реальных полей recognition.
   const extracted = [
@@ -321,7 +335,10 @@ function DocumentDetail({ doc, onBack }) {
           {/* AI summary — реальный recognized_text */}
           <Card style={{ borderLeft: '5px solid var(--accent-2)', paddingLeft: 'calc(var(--pad-card) - 1px)' }}>
             <span className="chip"><Icon name="bolt" s={14} sw={2.6} />ИИ-анализ</span>
-            <p style={{ fontSize: 15.5, color: 'var(--ink-2)', marginTop: 13, textWrap: 'pretty', whiteSpace: 'pre-wrap' }}>
+            {summary && !error && (
+              <p style={{ fontSize: 15.5, color: 'var(--ink)', fontWeight: 600, marginTop: 13, textWrap: 'pretty' }}>{summary}</p>
+            )}
+            <p style={{ fontSize: 15.5, color: 'var(--ink-2)', marginTop: summary ? 8 : 13, textWrap: 'pretty', whiteSpace: 'pre-wrap' }}>
               {error ? error : (d.recognized_text || (loading ? 'Загрузка…' : 'Текст ещё не распознан.'))}
             </p>
           </Card>
@@ -350,12 +367,12 @@ function DocumentDetail({ doc, onBack }) {
             </div>
           </Card>
 
-          {/* Проверки аудита и риски — мок, только для демо-аккаунта */}
-          {demo && (
+          {/* Проверки аудита — из structured_json распознавания (фолбэк: демо-мок) */}
+          {checks.length > 0 && (
             <Card>
               <SectionLabel>Проверки аудита</SectionLabel>
               <div className="stack" style={{ gap: 11, marginTop: 13 }}>
-                {mock.checks.map((c, i) => (
+                {checks.map((c, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
                     <span className={`icon-tile sm ${c.ok ? 'green' : 'red'}`} style={{ width: 30, height: 30, borderRadius: 9 }}>
                       <Icon name={c.ok ? 'check' : 'x'} s={16} sw={2.6} />
@@ -367,11 +384,11 @@ function DocumentDetail({ doc, onBack }) {
             </Card>
           )}
 
-          {demo && (
+          {risks.length > 0 && (
             <Card>
               <SectionLabel>Выявленные риски</SectionLabel>
               <div className="stack" style={{ gap: 12, marginTop: 13 }}>
-                {mock.risks.map((r, i) => (
+                {risks.map((r, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
                     <span className="dot" style={{ width: 9, height: 9, borderRadius: '50%', background: r.color }} />
                     <span style={{ fontWeight: 500 }}>{r.label}</span>
